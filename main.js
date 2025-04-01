@@ -49,7 +49,7 @@ const plankCanvas = plankTexture.image; // Get the canvas from the texture
 const plankCtx = plankCanvas.getContext('2d');
 plankCtx.strokeStyle = 'rgba(0, 0, 0, 0.2)'; // Darker lines
 plankCtx.lineWidth = Math.max(1, Math.floor(textureSize / 8)); // Adjust line width based on size
-for(let i = 0; i < textureSize; i += Math.floor(textureSize / 4)) {
+for(let i = 0; i <= textureSize; i += Math.floor(textureSize / 4)) {
     plankCtx.beginPath();
     plankCtx.moveTo(i, 0);
     plankCtx.lineTo(i, textureSize);
