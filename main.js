@@ -2,6 +2,61 @@ import * as THREE from 'three';
 // import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // Remove OrbitControls
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'; // Add PointerLockControls
 
+// --- Procedural Texture Generation ---
+function generateTexture(size, color, noiseAmount = 0.1) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+
+    // Base color
+    context.fillStyle = color;
+    context.fillRect(0, 0, size, size);
+
+    // Add noise
+    const imageData = context.getImageData(0, 0, size, size);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 255 * noiseAmount;
+        data[i] = Math.max(0, Math.min(255, data[i] + noise));     // Red
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise)); // Green
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise)); // Blue
+        // Alpha remains 255
+    }
+    context.putImageData(imageData, 0, 0);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true; // Ensure texture updates
+    // Make textures pixelated like Minecraft
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    return texture;
+}
+
+const textureSize = 16; // Small texture size for pixelated look
+
+const dirtTexture = generateTexture(textureSize, '#8B4513'); // Saddle Brown
+const grassTopTexture = generateTexture(textureSize, '#228B22', 0.05); // Forest Green (less noise)
+const grassSideTexture = generateTexture(textureSize, '#A0522D'); // Sienna (side dirt look)
+const stoneTexture = generateTexture(textureSize, '#808080', 0.15); // Gray (more noise)
+
+// --- Materials ---
+const dirtMaterial = new THREE.MeshStandardMaterial({ map: dirtTexture });
+const stoneMaterial = new THREE.MeshStandardMaterial({ map: stoneTexture });
+
+// Grass needs different materials for top, bottom (dirt), and sides
+const grassMaterials = [
+    new THREE.MeshStandardMaterial({ map: grassSideTexture }), // right face (+x)
+    new THREE.MeshStandardMaterial({ map: grassSideTexture }), // left face (-x)
+    new THREE.MeshStandardMaterial({ map: grassTopTexture }),  // top face (+y)
+    new THREE.MeshStandardMaterial({ map: dirtTexture }),     // bottom face (-y)
+    new THREE.MeshStandardMaterial({ map: grassSideTexture }), // front face (+z)
+    new THREE.MeshStandardMaterial({ map: grassSideTexture })  // back face (-z)
+];
+
+// --- Geometry (create once and reuse) ---
+const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
+
 // Get the instruction element
 const instructions = document.getElementById('instructions');
 
@@ -98,13 +153,30 @@ scene.add(directionalLight);
 // --- Block Management ---
 const blocks = []; // Array to hold all interactive blocks
 
-// Function to add a block at a specific position
-function addBlock(x, y, z) {
-    // Reuse geometry and material for efficiency later
-    const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
-    // Change default color to green for ground
-    const blockMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 }); // Forest green
-    const block = new THREE.Mesh(blockGeometry, blockMaterial);
+// Store block type info on the mesh itself for later use
+const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone' };
+
+// Function to add a block at a specific position with a specific type
+function addBlock(x, y, z, blockType = blockTypes.STONE) { // Default to placing stone
+    let material;
+    switch(blockType) {
+        case blockTypes.GRASS:
+            material = grassMaterials; // Use the array of materials for grass
+            break;
+        case blockTypes.DIRT:
+            material = dirtMaterial;
+            break;
+        case blockTypes.STONE:
+        default:
+            material = stoneMaterial;
+            break;
+    }
+
+    // Use the pre-defined geometry and the selected material(s)
+    const block = new THREE.Mesh(blockGeometry, material);
+    // Store type for potential future logic (e.g., different breaking sounds/times)
+    block.userData.blockType = blockType; 
+    
     // Blocks are centered at (x, y, z)
     block.position.set(x, y, z);
     scene.add(block);
@@ -113,16 +185,20 @@ function addBlock(x, y, z) {
 
 // --- Generate Ground Blocks ---
 const groundSize = 20; // e.g., 20x20 grid
-const groundLevel = -1;
+const dirtLevel = -2; // Level for dirt
+const grassLevel = -1; // Level for grass (on top of dirt)
+
 for (let x = -groundSize / 2; x < groundSize / 2; x++) {
     for (let z = -groundSize / 2; z < groundSize / 2; z++) {
-        addBlock(x, groundLevel, z);
+        // Add dirt block first
+        addBlock(x + 0.5, dirtLevel + 0.5, z + 0.5, blockTypes.DIRT);
+        // Add grass block on top
+        addBlock(x + 0.5, grassLevel + 0.5, z + 0.5, blockTypes.GRASS);
     }
 }
 
 // 7. Initial Block(s)
-// Remove the old single cube creation (already done)
-addBlock(0, 0, 0); // Add an initial block on top of the new ground
+addBlock(0 + 0.5, 0 + 0.5, 0 + 0.5, blockTypes.STONE); // Add an initial STONE block
 
 // Movement variables
 const moveSpeed = 0.1;
@@ -202,7 +278,7 @@ window.addEventListener('mousedown', (event) => {
 
                 // If collision check passes, add the block
                 // console.log(`Placing block at: ${newBlockPos.x}, ${newBlockPos.y}, ${newBlockPos.z}`);
-                addBlock(newBlockPos.x, newBlockPos.y, newBlockPos.z);
+                addBlock(newBlockPos.x, newBlockPos.y, newBlockPos.z, blockTypes.STONE); // Place a STONE block by default
             }
         }
     }
