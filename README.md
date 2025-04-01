@@ -82,6 +82,7 @@ Then open your browser and navigate to the URL shown in the terminal (typically 
 - Textures from image files: Use more detailed, pre-designed textures.
 - Lighting and shadows: Improve the visual appearance.
 - Optimizations: Implement chunk-based rendering for better performance.
+- AI generated and AI powered textures and entities
 
 ## License
 
