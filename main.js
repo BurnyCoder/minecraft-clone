@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 // import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // Remove OrbitControls
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'; // Add PointerLockControls
+import { createNoise2D } from 'simplex-noise'; // Import noise function
 
 // --- Procedural Texture Generation ---
 function generateTexture(size, color, noiseAmount = 0.1) {
@@ -59,6 +60,12 @@ const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
 
 // Store block type info
 const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone' };
+
+// --- Noise Setup ---
+const noise2D = createNoise2D(); // Create a 2D noise function
+const noiseFrequency = 0.05; // Controls the scale of terrain features (smaller = larger features)
+const noiseAmplitude = 5; // Controls the max height variation
+const baseLevel = -5; // Lowest level for stone generation
 
 // Get the instruction element
 const instructions = document.getElementById('instructions');
@@ -214,22 +221,36 @@ function addBlock(x, y, z, blockType = blockTypes.STONE) { // Default to placing
     blocks.push(block); // Add to our list
 }
 
-// --- Generate Ground Blocks ---
-const groundSize = 20; // e.g., 20x20 grid
-const dirtLevel = -2; // Level for dirt
-const grassLevel = -1; // Level for grass (on top of dirt)
+// --- Generate Ground Blocks (Procedural Terrain) ---
+const worldSize = 32; // Increase world size slightly? (e.g., 32x32)
+for (let x = -worldSize / 2; x < worldSize / 2; x++) {
+    for (let z = -worldSize / 2; z < worldSize / 2; z++) {
+        // Calculate noise value for this x, z coordinate
+        const noiseVal = noise2D(x * noiseFrequency, z * noiseFrequency);
 
-for (let x = -groundSize / 2; x < groundSize / 2; x++) {
-    for (let z = -groundSize / 2; z < groundSize / 2; z++) {
-        // Add dirt block first
-        addBlock(x + 0.5, dirtLevel + 0.5, z + 0.5, blockTypes.DIRT);
-        // Add grass block on top
-        addBlock(x + 0.5, grassLevel + 0.5, z + 0.5, blockTypes.GRASS);
+        // Map noise value (-1 to 1) to height variation around baseLevel
+        // Add 1 to noiseVal to make it 0-2 range, then multiply by amplitude
+        const heightVariation = (noiseVal + 1) / 2 * noiseAmplitude;
+        const topY = Math.floor(baseLevel + heightVariation);
+
+        // Generate column from baseLevel up to topY
+        for (let y = baseLevel; y <= topY; y++) {
+            let blockType;
+            if (y === topY) {
+                blockType = blockTypes.GRASS; // Top layer is grass
+            } else if (y >= topY - 2) {
+                blockType = blockTypes.DIRT; // Layer(s) below grass is dirt
+            } else {
+                blockType = blockTypes.STONE; // Everything else below is stone
+            }
+            // Add block (adjust position by 0.5 for center)
+            addBlock(x + 0.5, y + 0.5, z + 0.5, blockType);
+        }
     }
 }
 
 // 7. Initial Block(s)
-addBlock(0 + 0.5, 0 + 0.5, 0 + 0.5, blockTypes.STONE); // Add an initial STONE block
+// addBlock(0 + 0.5, 0 + 0.5, 0 + 0.5, blockTypes.STONE); // Remove the initial floating block
 
 // Movement variables
 const moveSpeed = 0.1;
