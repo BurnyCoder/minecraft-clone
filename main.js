@@ -16,7 +16,7 @@ const camera = new THREE.PerspectiveCamera(
     0.1, // Near clipping plane
     1000 // Far clipping plane
 );
-camera.position.set(0, 1, 5); // Adjust starting position slightly for ground level view
+camera.position.set(0, 10, 5); // Start higher up
 // camera.lookAt(0, 0, 0); // PointerLockControls handles looking
 
 // 3. Renderer
@@ -55,7 +55,8 @@ const keys = {
     w: false,
     a: false,
     s: false,
-    d: false
+    d: false,
+    space: false // Add spacebar state
 };
 
 document.addEventListener('keydown', (event) => {
@@ -64,6 +65,7 @@ document.addEventListener('keydown', (event) => {
         case 'KeyA': keys.a = true; break;
         case 'KeyS': keys.s = true; break;
         case 'KeyD': keys.d = true; break;
+        case 'Space': keys.space = true; break; // Handle spacebar down
     }
 });
 
@@ -73,6 +75,7 @@ document.addEventListener('keyup', (event) => {
         case 'KeyA': keys.a = false; break;
         case 'KeyS': keys.s = false; break;
         case 'KeyD': keys.d = false; break;
+        case 'Space': keys.space = false; break; // Handle spacebar up
     }
 });
 
@@ -123,8 +126,16 @@ addBlock(0, 0, 0); // Add an initial block on top of the new ground
 
 // Movement variables
 const moveSpeed = 0.1;
-const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
+// Remove old velocity/direction, physics handles Y velocity now
+// const velocity = new THREE.Vector3(); 
+// const direction = new THREE.Vector3();
+
+// --- Player Physics Variables ---
+const playerHeight = 1.7; // Approximate player height
+const gravity = 0.01;
+const jumpForce = 0.15; 
+let playerVelocityY = 0;
+let onGround = false;
 
 // --- Raycasting Setup ---
 const raycaster = new THREE.Raycaster();
@@ -198,35 +209,77 @@ window.addEventListener('mousedown', (event) => {
 });
 
 // 8. Animation Loop
-function animate(time) { // Add time for potential physics later
+const clock = new THREE.Clock(); // Need clock for delta time
+const groundCheckRaycaster = new THREE.Raycaster(); // Separate raycaster for ground check
+const downVector = new THREE.Vector3(0, -1, 0);
+
+function animate(time) { 
     requestAnimationFrame(animate);
+    const delta = clock.getDelta(); // Get time difference for frame-rate independent physics/movement
 
-    // Only move if pointer is locked
+    // --- Horizontal Movement (WASD) --- 
     if (controls.isLocked === true) {
-        // Reset velocity based on current direction
-        velocity.x = 0.0;
-        velocity.z = 0.0;
+        const moveDirection = new THREE.Vector3(); // Temp vector for movement direction
+        moveDirection.z = Number(keys.w) - Number(keys.s);
+        moveDirection.x = Number(keys.d) - Number(keys.a);
+        moveDirection.normalize(); // Ensure consistent speed regardless of direction
 
-        // Get movement direction based on key presses
-        direction.z = Number(keys.w) - Number(keys.s);
-        direction.x = Number(keys.d) - Number(keys.a);
-        direction.normalize(); // Ensure consistent speed in all directions
+        // Adjust speed based on delta time
+        const actualMoveSpeed = moveSpeed * delta * 60; // Multiply by 60 for baseline speed
 
-        // Move forward/backward
         if (keys.w || keys.s) {
-            velocity.z = direction.z;
-            controls.moveForward(velocity.z * moveSpeed);
+            controls.moveForward(moveDirection.z * actualMoveSpeed);
         }
-        // Move left/right
         if (keys.a || keys.d) {
-            velocity.x = direction.x;
-            controls.moveRight(velocity.x * moveSpeed);
+            controls.moveRight(moveDirection.x * actualMoveSpeed);
         }
 
-        // Optional: Add simple gravity or collision detection here later
-    }
+        // --- Vertical Movement (Gravity and Jumping) --- 
+        const playerPosition = controls.getObject().position;
 
-    // controls.update(); // Not needed for PointerLockControls movement logic
+        // Raycast down from player center to check for ground
+        groundCheckRaycaster.set(playerPosition, downVector);
+        const groundIntersects = groundCheckRaycaster.intersectObjects(blocks);
+
+        const onSolidGround = groundIntersects.length > 0 && groundIntersects[0].distance < playerHeight;
+
+        if (onSolidGround) {
+            // Player is on the ground
+            if (playerVelocityY < 0) { // Only stop if falling or still
+                 playerVelocityY = 0;
+            }
+            onGround = true;
+
+            // Snap player to be exactly playerHeight above the ground block
+            const groundY = groundIntersects[0].point.y;
+            // Small offset to prevent slight sinking
+            const targetY = groundY + playerHeight ; // Adjust to stand on top
+            // Apply correction smoothly or instantly
+            playerPosition.y = targetY; 
+
+
+            // Handle Jump
+            if (keys.space) {
+                playerVelocityY = jumpForce;
+                onGround = false;
+            }
+
+        } else {
+            // Player is in the air
+            onGround = false;
+            playerVelocityY -= gravity * delta * 60; // Apply gravity (adjust by delta)
+        }
+
+        // Apply vertical velocity
+        // Scale by delta and baseline (60) for consistency with horizontal movement and gravity
+        playerPosition.y += playerVelocityY * delta * 60;
+
+        // Prevent falling through the world (optional safety net)
+        if (playerPosition.y < -50) {
+            playerPosition.set(0, 10, 5); // Reset position
+            playerVelocityY = 0;
+        }
+    }
 
     renderer.render(scene, camera);
 }
