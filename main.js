@@ -103,7 +103,7 @@ controls.addEventListener('unlock', () => {
 });
 
 // Add controls object to the scene so it can be updated
-scene.add(controls.getObject());
+scene.add(controls.object);
 
 // Keyboard state
 const keys = {
@@ -248,7 +248,7 @@ window.addEventListener('mousedown', (event) => {
 
                 // --- Collision Check: Prevent placing block inside player --- 
                 const playerPos = new THREE.Vector3();
-                controls.getObject().getWorldPosition(playerPos);
+                controls.object.getWorldPosition(playerPos);
 
                 // Calculate voxel center coords for player's feet and head 
                 // Need to floor playerPos and add 0.5 to get the center of the voxel the player is in
@@ -300,48 +300,54 @@ function animate() {
         }
 
         // --- Vertical Movement (Gravity and Jumping) --- 
-        const playerPosition = controls.getObject().position;
+        const playerPosition = controls.object.position;
+        let snappedToGround = false; // Flag to track if we snapped this frame
 
-        // Raycast down from player center to check for ground
+        // 1. Apply gravity to velocity *first*
+        playerVelocityY -= gravity * delta * 60; 
+
+        // 2. Raycast down from player center to check for ground
         groundCheckRaycaster.set(playerPosition, downVector);
         const groundIntersects = groundCheckRaycaster.intersectObjects(blocks);
+        // Reduced buffer slightly
+        const onSolidGround = groundIntersects.length > 0 && groundIntersects[0].distance < playerHeight + 0.05; 
 
-        const onSolidGround = groundIntersects.length > 0 && groundIntersects[0].distance < playerHeight;
-
+        // 3. Handle ground state and jumping
         if (onSolidGround) {
-            // Player is on the ground
-            if (playerVelocityY < 0) { // Only stop if falling or still
-                 playerVelocityY = 0;
-            }
-            onGround = true;
-
-            // Snap player to be exactly playerHeight above the ground block
-            const groundY = groundIntersects[0].point.y;
-            // Small offset to prevent slight sinking
-            const targetY = groundY + playerHeight ; // Adjust to stand on top
-            // Apply correction smoothly or instantly
-            playerPosition.y = targetY; 
-
-
-            // Handle Jump
+            // Handle Jump FIRST
             if (keys.space) {
+                 // Apply jump force and leave ground state
                 playerVelocityY = jumpForce;
                 onGround = false;
+                snappedToGround = false; // We are jumping, not snapping
+            } else {
+                 // Not jumping, so truly on ground
+                 const groundY = groundIntersects[0].point.y;
+                 const targetY = groundY + playerHeight;
+                 // Reset velocity and snap position
+                 playerVelocityY = 0;
+                 onGround = true;
+                 playerPosition.y = targetY; // Snap to ground ONLY if not jumping
+                 snappedToGround = true; // We snapped this frame
             }
 
         } else {
-            // Player is in the air
+            // 4. Player is in the air
             onGround = false;
-            playerVelocityY -= gravity * delta * 60; // Apply gravity (adjust by delta)
+            snappedToGround = false;
         }
 
-        // Apply vertical velocity
-        // Scale by delta and baseline (60) for consistency with horizontal movement and gravity
-        playerPosition.y += playerVelocityY * delta * 60;
+        // 5. Apply vertical velocity *unless* we snapped to ground this frame
+        if (!snappedToGround) {
+            const verticalDelta = playerVelocityY * delta * 60;
+            playerPosition.y += verticalDelta;
+        }
+
+         // --- Debug Logging (Removed) --- 
 
         // Prevent falling through the world (optional safety net)
         if (playerPosition.y < -50) {
-            playerPosition.set(0, 10, 5); // Reset position
+            controls.object.position.set(0, 10, 5);
             playerVelocityY = 0;
         }
     }
