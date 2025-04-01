@@ -194,9 +194,6 @@ addBlock(0 + 0.5, 0 + 0.5, 0 + 0.5, blockTypes.STONE); // Add an initial STONE b
 
 // Movement variables
 const moveSpeed = 0.1;
-// Remove old velocity/direction, physics handles Y velocity now
-// const velocity = new THREE.Vector3(); 
-// const direction = new THREE.Vector3();
 
 // --- Player Physics Variables ---
 const playerHeight = 1.7; // Approximate player height
@@ -281,7 +278,7 @@ const clock = new THREE.Clock(); // Need clock for delta time
 const groundCheckRaycaster = new THREE.Raycaster(); // Separate raycaster for ground check
 const downVector = new THREE.Vector3(0, -1, 0);
 
-function animate(time) { 
+function animate() { 
     requestAnimationFrame(animate);
     const delta = clock.getDelta(); // Get time difference for frame-rate independent physics/movement
 
