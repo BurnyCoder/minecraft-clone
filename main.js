@@ -98,7 +98,7 @@ const camera = new THREE.PerspectiveCamera(
     75, // Field of view
     window.innerWidth / window.innerHeight, // Aspect ratio
     0.1, // Near clipping plane
-    1000 // Far clipping plane
+    50 // Far clipping plane - Reduced significantly from 1000
 );
 camera.position.set(0, 10, 5); // Start higher up
 // camera.lookAt(0, 0, 0); // PointerLockControls handles looking
