@@ -57,6 +57,9 @@ const grassMaterials = [
 // --- Geometry (create once and reuse) ---
 const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
 
+// Store block type info
+const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone' };
+
 // Get the instruction element
 const instructions = document.getElementById('instructions');
 
@@ -114,16 +117,47 @@ const keys = {
     space: false // Add spacebar state
 };
 
+// --- Player Physics Variables ---
+const playerHeight = 1.7; // Approximate player height
+const gravity = 0.01;
+const jumpForce = 0.15; 
+let playerVelocityY = 0;
+let onGround = false;
+
+// --- Block Selection State ---
+let selectedBlockType = blockTypes.STONE; // Start with stone selected
+
+// --- Raycasting Setup ---
+const raycaster = new THREE.Raycaster();
+const interactionDistance = 5; // Max distance to interact with blocks
+
 document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW': keys.w = true; break;
         case 'KeyA': keys.a = true; break;
         case 'KeyS': keys.s = true; break;
         case 'KeyD': keys.d = true; break;
-        case 'Space': keys.space = true; break; // Handle spacebar down
+        case 'Space': keys.space = true; break;
+        // Block selection keys
+        case 'Digit1': 
+            selectedBlockType = blockTypes.STONE;
+            console.log("Selected: Stone"); // Feedback
+            updateSelectedBlockUI(); // Update UI (will add function later)
+            break;
+        case 'Digit2': 
+            selectedBlockType = blockTypes.DIRT;
+            console.log("Selected: Dirt"); // Feedback
+            updateSelectedBlockUI();
+            break;
+        case 'Digit3': 
+            selectedBlockType = blockTypes.GRASS;
+            console.log("Selected: Grass"); // Feedback
+            updateSelectedBlockUI();
+            break;
     }
 });
 
+// Add the keyup listener back
 document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW': keys.w = false; break;
@@ -133,6 +167,14 @@ document.addEventListener('keyup', (event) => {
         case 'Space': keys.space = false; break; // Handle spacebar up
     }
 });
+
+// Need to add the updateSelectedBlockUI function later
+function updateSelectedBlockUI() {
+    const selectedBlockElement = document.getElementById('selected-block-ui');
+    if (selectedBlockElement) {
+        selectedBlockElement.textContent = `Selected: ${selectedBlockType.charAt(0).toUpperCase() + selectedBlockType.slice(1)}`;
+    }
+}
 
 // 5. Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft white light
@@ -144,9 +186,6 @@ scene.add(directionalLight);
 
 // --- Block Management ---
 const blocks = []; // Array to hold all interactive blocks
-
-// Store block type info on the mesh itself for later use
-const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone' };
 
 // Function to add a block at a specific position with a specific type
 function addBlock(x, y, z, blockType = blockTypes.STONE) { // Default to placing stone
@@ -194,17 +233,6 @@ addBlock(0 + 0.5, 0 + 0.5, 0 + 0.5, blockTypes.STONE); // Add an initial STONE b
 
 // Movement variables
 const moveSpeed = 0.1;
-
-// --- Player Physics Variables ---
-const playerHeight = 1.7; // Approximate player height
-const gravity = 0.01;
-const jumpForce = 0.15; 
-let playerVelocityY = 0;
-let onGround = false;
-
-// --- Raycasting Setup ---
-const raycaster = new THREE.Raycaster();
-const interactionDistance = 5; // Max distance to interact with blocks
 
 // --- Mouse Click Listener ---
 window.addEventListener('mousedown', (event) => {
@@ -265,9 +293,9 @@ window.addEventListener('mousedown', (event) => {
                 }
                 // --- End Collision Check ---
 
-                // If collision check passes, add the block
+                // If collision check passes, add the block using the currently selected type
                 // console.log(`Placing block at: ${newBlockPos.x}, ${newBlockPos.y}, ${newBlockPos.z}`);
-                addBlock(newBlockPos.x, newBlockPos.y, newBlockPos.z, blockTypes.STONE); // Place a STONE block by default
+                addBlock(newBlockPos.x, newBlockPos.y, newBlockPos.z, selectedBlockType);
             }
         }
     }
@@ -356,3 +384,6 @@ function animate() {
 }
 
 animate(); 
+
+// Initialize the selected block UI on load
+updateSelectedBlockUI(); 

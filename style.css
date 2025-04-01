@@ -20,4 +20,16 @@ canvas {
     font-family: sans-serif;
     font-size: 1.2em;
     cursor: pointer; /* Indicate it's clickable */
+}
+
+#selected-block-ui {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 3px;
+    font-family: sans-serif;
+    font-size: 1em;
 } 
