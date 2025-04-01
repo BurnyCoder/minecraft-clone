@@ -40,10 +40,14 @@ const dirtTexture = generateTexture(textureSize, '#8B4513'); // Saddle Brown
 const grassTopTexture = generateTexture(textureSize, '#228B22', 0.05); // Forest Green (less noise)
 const grassSideTexture = generateTexture(textureSize, '#A0522D'); // Sienna (side dirt look)
 const stoneTexture = generateTexture(textureSize, '#808080', 0.15); // Gray (more noise)
+const logTexture = generateTexture(textureSize, '#654321', 0.08); // Dark Brown (wood log)
+const leafTexture = generateTexture(textureSize, '#006400', 0.2);  // Dark Green (leaves)
 
 // --- Materials ---
 const dirtMaterial = new THREE.MeshStandardMaterial({ map: dirtTexture });
 const stoneMaterial = new THREE.MeshStandardMaterial({ map: stoneTexture });
+const logMaterial = new THREE.MeshStandardMaterial({ map: logTexture });
+const leafMaterial = new THREE.MeshStandardMaterial({ map: leafTexture, transparent: true, opacity: 0.9 }); // Make leaves slightly transparent
 
 // Grass needs different materials for top, bottom (dirt), and sides
 const grassMaterials = [
@@ -59,7 +63,7 @@ const grassMaterials = [
 const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
 
 // Store block type info
-const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone' };
+const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone', LOG: 'log', LEAF: 'leaf' };
 
 // --- Noise Setup ---
 const noise2D = createNoise2D(); // Create a 2D noise function
@@ -161,6 +165,16 @@ document.addEventListener('keydown', (event) => {
             console.log("Selected: Grass"); // Feedback
             updateSelectedBlockUI();
             break;
+        case 'Digit4': 
+            selectedBlockType = blockTypes.LOG;
+            console.log("Selected: Log"); // Feedback
+            updateSelectedBlockUI();
+            break;
+        case 'Digit5': 
+            selectedBlockType = blockTypes.LEAF;
+            console.log("Selected: Leaf"); // Feedback
+            updateSelectedBlockUI();
+            break;
     }
 });
 
@@ -204,6 +218,12 @@ function addBlock(x, y, z, blockType = blockTypes.STONE) { // Default to placing
         case blockTypes.DIRT:
             material = dirtMaterial;
             break;
+        case blockTypes.LOG:
+            material = logMaterial;
+            break;
+        case blockTypes.LEAF:
+            material = leafMaterial;
+            break;
         case blockTypes.STONE:
         default:
             material = stoneMaterial;
@@ -244,7 +264,43 @@ for (let x = -worldSize / 2; x < worldSize / 2; x++) {
                 blockType = blockTypes.STONE; // Everything else below is stone
             }
             // Add block (adjust position by 0.5 for center)
-            addBlock(x + 0.5, y + 0.5, z + 0.5, blockType);
+            const blockX = x + 0.5;
+            const blockY = y + 0.5;
+            const blockZ = z + 0.5;
+            addBlock(blockX, blockY, blockZ, blockType);
+
+            // --- Tree Generation --- 
+            // If this is the top grass block and random chance passes
+            if (blockType === blockTypes.GRASS && Math.random() < 0.01) { // 1% chance for a tree
+                const trunkHeight = Math.floor(Math.random() * 3) + 4; // 4-6 blocks high
+                // Generate Trunk
+                for (let ty = 1; ty <= trunkHeight; ty++) {
+                    addBlock(blockX, blockY + ty, blockZ, blockTypes.LOG);
+                }
+                // Generate Leaves (Simple Canopy)
+                const leafStartY = blockY + trunkHeight - 1; // Start leaves below the top log
+                const leafSize = 2; // Radius of leaves around trunk top
+                for (let lx = -leafSize; lx <= leafSize; lx++) {
+                    for (let ly = 0; ly <= leafSize; ly++) { // Height of leaves
+                        for (let lz = -leafSize; lz <= leafSize; lz++) {
+                            // Simple square/cube shape, avoiding the very center/corners sometimes
+                            if (lx === 0 && lz === 0 && ly < leafSize) continue; // Space for trunk top
+                            if (Math.abs(lx) === leafSize && Math.abs(lz) === leafSize && ly === 0) continue; // Trim corners slightly
+                             addBlock(blockX + lx, leafStartY + ly, blockZ + lz, blockTypes.LEAF);
+                        }
+                    }
+                }
+                // Add top layer of leaves
+                const topLeafY = leafStartY + leafSize + 1; // One level above current canopy top
+                for (let lx = -1; lx <= 1; lx++) {
+                    for (let lz = -1; lz <= 1; lz++) {
+                        // Skip corners for a more rounded look
+                        if (Math.abs(lx) === 1 && Math.abs(lz) === 1) continue;
+                        addBlock(blockX + lx, topLeafY, blockZ + lz, blockTypes.LEAF);
+                    }
+                }
+            }
+            // --- End Tree Generation ---
         }
     }
 }
