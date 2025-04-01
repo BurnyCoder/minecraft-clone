@@ -142,14 +142,6 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
 directionalLight.position.set(5, 10, 7.5);
 scene.add(directionalLight);
 
-// 6. Ground Plane - REMOVE OLD PLANE
-// const groundGeometry = new THREE.PlaneGeometry(50, 50); 
-// const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22, side: THREE.DoubleSide }); 
-// const groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
-// groundPlane.rotation.x = -Math.PI / 2; 
-// groundPlane.position.y = -0.5; 
-// scene.add(groundPlane);
-
 // --- Block Management ---
 const blocks = []; // Array to hold all interactive blocks
 
