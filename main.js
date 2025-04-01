@@ -42,12 +42,27 @@ const grassSideTexture = generateTexture(textureSize, '#A0522D'); // Sienna (sid
 const stoneTexture = generateTexture(textureSize, '#808080', 0.15); // Gray (more noise)
 const logTexture = generateTexture(textureSize, '#654321', 0.08); // Dark Brown (wood log)
 const leafTexture = generateTexture(textureSize, '#006400', 0.2);  // Dark Green (leaves)
+const plankTexture = generateTexture(textureSize, '#DEB887', 0.03); // BurlyWood (plank color)
+
+// --- Add simple lines for plank texture ---
+const plankCanvas = plankTexture.image; // Get the canvas from the texture
+const plankCtx = plankCanvas.getContext('2d');
+plankCtx.strokeStyle = 'rgba(0, 0, 0, 0.2)'; // Darker lines
+plankCtx.lineWidth = Math.max(1, Math.floor(textureSize / 8)); // Adjust line width based on size
+for(let i = 0; i < textureSize; i += Math.floor(textureSize / 4)) {
+    plankCtx.beginPath();
+    plankCtx.moveTo(i, 0);
+    plankCtx.lineTo(i, textureSize);
+    plankCtx.stroke();
+}
+plankTexture.needsUpdate = true; // Make sure texture updates after drawing
 
 // --- Materials ---
 const dirtMaterial = new THREE.MeshStandardMaterial({ map: dirtTexture });
 const stoneMaterial = new THREE.MeshStandardMaterial({ map: stoneTexture });
 const logMaterial = new THREE.MeshStandardMaterial({ map: logTexture });
 const leafMaterial = new THREE.MeshStandardMaterial({ map: leafTexture, transparent: true, opacity: 0.9 }); // Make leaves slightly transparent
+const plankMaterial = new THREE.MeshStandardMaterial({ map: plankTexture });
 
 // Grass needs different materials for top, bottom (dirt), and sides
 const grassMaterials = [
@@ -63,7 +78,7 @@ const grassMaterials = [
 const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
 
 // Store block type info
-const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone', LOG: 'log', LEAF: 'leaf' };
+const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone', LOG: 'log', LEAF: 'leaf', PLANKS: 'planks' };
 
 // --- Noise Setup ---
 const noise2D = createNoise2D(); // Create a 2D noise function
@@ -175,6 +190,11 @@ document.addEventListener('keydown', (event) => {
             console.log("Selected: Leaf"); // Feedback
             updateSelectedBlockUI();
             break;
+        case 'Digit6': 
+            selectedBlockType = blockTypes.PLANKS;
+            console.log("Selected: Planks"); // Feedback
+            updateSelectedBlockUI();
+            break;
     }
 });
 
@@ -223,6 +243,9 @@ function addBlock(x, y, z, blockType = blockTypes.STONE) { // Default to placing
             break;
         case blockTypes.LEAF:
             material = leafMaterial;
+            break;
+        case blockTypes.PLANKS:
+            material = plankMaterial;
             break;
         case blockTypes.STONE:
         default:
