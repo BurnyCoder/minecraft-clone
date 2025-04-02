@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Block Sandbox</title>
+    <title>Block Sandbox - Enhanced</title>
     <style>
         body {
             margin: 0;
             overflow: hidden; /* Prevent scrollbars */
-            font-family: 'Arial', sans-serif; /* Basic font */
-            background-color: #add8e6; /* Light blue sky background */
+            font-family: 'Arial', sans-serif;
+            background-color: #77b6e0; /* Fallback sky color */
             color: white;
         }
         canvas {
-            display: block; /* Remove default margin */
+            display: block;
             width: 100%;
             height: 100%;
         }
@@ -21,41 +21,61 @@
             position: absolute;
             top: 10px;
             left: 10px;
-            background-color: rgba(0, 0, 0, 0.5);
+            background-color: rgba(0, 0, 0, 0.6);
             padding: 10px;
             border-radius: 5px;
             font-size: 14px;
-            z-index: 10; /* Ensure it's above canvas */
+            z-index: 10;
+            color: white; /* Ensure text is visible */
         }
         #crosshair {
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 4px;
-            height: 4px;
-            background-color: white;
-            border: 1px solid black; /* Make it more visible */
-            border-radius: 50%;
+            width: 10px; /* Larger crosshair */
+            height: 10px;
+            border: 1px solid white;
             transform: translate(-50%, -50%);
-            pointer-events: none; /* Don't interfere with clicks */
+            pointer-events: none;
             z-index: 10;
+            box-sizing: border-box; /* Include border in size */
         }
-        #block-selector {
+         #crosshair::before, #crosshair::after { /* Simple + shape */
+            content: '';
+            position: absolute;
+            background-color: white;
+         }
+         #crosshair::before { /* Vertical line */
+            left: 50%;
+            top: -3px;
+            width: 1px;
+            height: 16px; /* Increased length */
+            transform: translateX(-50%);
+         }
+          #crosshair::after { /* Horizontal line */
+            top: 50%;
+            left: -3px;
+            width: 16px; /* Increased length */
+            height: 1px;
+            transform: translateY(-50%);
+         }
+        #block-selector { /* Style as hotbar */
             position: absolute;
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.6);
-            padding: 10px;
-            border-radius: 5px;
+            background-color: rgba(0, 0, 0, 0.4);
+            padding: 5px;
+            border: 2px solid #555;
+            border-radius: 3px;
             display: flex;
-            gap: 10px;
+            gap: 5px; /* Tighter gap */
             z-index: 10;
         }
         .block-option {
-            width: 40px;
-            height: 40px;
-            border: 2px solid #555;
+            width: 50px; /* Larger slots */
+            height: 50px;
+            border: 2px solid #888; /* Lighter border */
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -64,22 +84,26 @@
             color: white;
             font-size: 10px;
             text-align: center;
-            user-select: none; /* Prevent text selection */
+            user-select: none;
+            background-size: cover; /* For potential future textures */
+            image-rendering: pixelated; /* Keep textures sharp */
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.5); /* Inner shadow */
         }
         .block-option.selected {
             border-color: white;
+            box-shadow: inset 0 0 10px rgba(255,255,255,0.7); /* Highlight selected */
         }
-        /* Simple block colors */
-        .grass { background-color: #228B22; } /* ForestGreen */
-        .dirt { background-color: #8B4513; } /* SaddleBrown */
-        .stone { background-color: #808080; } /* Gray */
-        .wood { background-color: #A0522D; } /* Sienna */
-        .leaves { background-color: #006400; /* DarkGreen */ }
+        /* Simple block colors - Use background color for preview */
+        .grass { background-color: #559e55; } /* Average grass color */
+        .dirt { background-color: #8B4513; }
+        .stone { background-color: #808080; }
+        .wood { background-color: #A0522D; }
+        .leaves { background-color: #006400; }
     </style>
 </head>
 <body>
     <div id="instructions">
-        Click to start<br>
+        Click to start (Sound requires interaction)<br>
         WASD: Move<br>
         Space: Jump<br>
         Mouse: Look<br>
@@ -87,7 +111,7 @@
         Right Click: Place Block<br>
         1-5: Select Block Type
     </div>
-    <div id="crosshair">+</div>
+    <div id="crosshair"></div>
     <div id="block-selector">
         <div class="block-option grass selected" data-type="grass">Grass (1)</div>
         <div class="block-option dirt" data-type="dirt">Dirt (2)</div>
@@ -97,118 +121,208 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+
     <script>
-        // Ensure Three.js is loaded before starting
-        if (typeof THREE === 'undefined') {
-            console.error("Three.js library not found. Please check the script URL.");
-            document.getElementById('instructions').innerHTML = "Error: Could not load Three.js library.";
+        // Ensure libraries are loaded before starting
+        if (typeof THREE === 'undefined' || typeof Tone === 'undefined') {
+            console.error("Required library (Three.js or Tone.js) not found.");
+            document.getElementById('instructions').innerHTML = "Error: Could not load required libraries.";
         } else {
+            // --- Tone.js Setup (Sound) ---
+            const synth = new Tone.Synth().toDestination();
+            const metalSynth = new Tone.MetalSynth({ // For breaking sound
+                frequency: 150,
+                envelope: { attack: 0.001, decay: 0.1, release: 0.1 },
+                harmonicity: 3.1,
+                modulationIndex: 16,
+                resonance: 2000,
+                octaves: 0.5
+            }).toDestination();
+            metalSynth.volume.value = -15; // Quieter breaking sound
+
+            function playSound(type) {
+                // Start Tone context on first interaction
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                try {
+                    if (type === 'place') {
+                        synth.triggerAttackRelease("C4", "16n"); // Simple placement sound
+                    } else if (type === 'break') {
+                        metalSynth.triggerAttackRelease("8n"); // Short metallic sound
+                    } else if (type === 'jump') {
+                        synth.triggerAttackRelease("E4", "16n", Tone.now(), 0.5); // Slightly higher jump sound
+                    }
+                } catch (error) {
+                    console.error("Tone.js error:", error);
+                }
+            }
+
+
             // --- Scene Setup ---
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xadd8e6); // Light blue sky
-            scene.fog = new THREE.Fog(0xadd8e6, 10, 50); // Add fog for distance effect
+            // Background color is fallback if skybox fails
+            scene.background = new THREE.Color(0x77b6e0);
+
 
             // --- Camera Setup ---
             const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            // Camera is positioned by physics, start slightly above origin
-            camera.position.y = 5;
-            camera.position.z = 5;
+            camera.position.set(0, 5, 5); // Start position
 
 
             // --- Renderer Setup ---
             const renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true; // Enable shadows
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
             document.body.appendChild(renderer.domElement);
 
             // --- Lighting ---
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Soft ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Slightly brighter ambient
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Sun light
-            directionalLight.position.set(15, 20, 10); // Adjusted light position
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7); // Slightly less intense direct light
+            directionalLight.position.set(20, 30, 15); // Higher angle sun
             directionalLight.castShadow = true;
-            // Configure shadow properties
             directionalLight.shadow.mapSize.width = 1024;
             directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
-            directionalLight.shadow.camera.far = 50;
-            directionalLight.shadow.camera.left = -20;
-            directionalLight.shadow.camera.right = 20;
-            directionalLight.shadow.camera.top = 20;
-            directionalLight.shadow.camera.bottom = -20;
+            directionalLight.shadow.camera.far = 80; // Increase shadow distance slightly
+            directionalLight.shadow.camera.left = -30; // Adjust shadow frustum
+            directionalLight.shadow.camera.right = 30;
+            directionalLight.shadow.camera.top = 30;
+            directionalLight.shadow.camera.bottom = -30;
+            directionalLight.shadow.bias = -0.0005; // Adjust shadow bias to reduce artifacts
             scene.add(directionalLight);
             // scene.add(new THREE.CameraHelper(directionalLight.shadow.camera)); // Debug shadows
 
+            // --- Skybox and Clouds ---
+            const skyboxSize = 500;
+            const skyboxGeo = new THREE.BoxGeometry(skyboxSize, skyboxSize, skyboxSize);
+            const skyboxMaterials = [
+                new THREE.MeshBasicMaterial({ color: 0x87ceeb, side: THREE.BackSide }), // Right
+                new THREE.MeshBasicMaterial({ color: 0x87ceeb, side: THREE.BackSide }), // Left
+                new THREE.MeshBasicMaterial({ color: 0x87cefa, side: THREE.BackSide }), // Top (lighter)
+                new THREE.MeshBasicMaterial({ color: 0xadd8e6, side: THREE.BackSide }), // Bottom (slightly darker)
+                new THREE.MeshBasicMaterial({ color: 0x87ceeb, side: THREE.BackSide }), // Front
+                new THREE.MeshBasicMaterial({ color: 0x87ceeb, side: THREE.BackSide })  // Back
+            ];
+            const skybox = new THREE.Mesh(skyboxGeo, skyboxMaterials);
+            scene.add(skybox);
+
+            // Simple Clouds
+            const cloudGeo = new THREE.BoxGeometry(5, 1, 3); // Flat cloud shape
+            const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+            for (let i = 0; i < 15; i++) {
+                const cloud = new THREE.Mesh(cloudGeo, cloudMaterial);
+                cloud.position.set(
+                    (Math.random() - 0.5) * 200, // Spread horizontally
+                    Math.random() * 20 + 30,    // Height range
+                    (Math.random() - 0.5) * 200  // Spread depth
+                );
+                cloud.rotation.y = Math.random() * Math.PI; // Random rotation
+                scene.add(cloud);
+            }
+
+
             // --- Basic Player Physics ---
             const playerVelocity = new THREE.Vector3();
-            const playerHeight = 1.8; // Approximate player height centered around camera position
-            const playerWidth = 0.6; // Approximate player width/depth for collision
+            const playerHeight = 1.8;
+            const playerWidth = 0.6;
             const playerHalfWidth = playerWidth / 2;
             const playerHalfHeight = playerHeight / 2;
-            const gravity = -20.0; // Stronger gravity
-            const jumpForce = 8.0;
-            const worldUp = new THREE.Vector3(0, 1, 0); // Define world up direction
-            let playerIsOnGround = false; // Track if player is on the ground
+            const gravity = -22.0; // Slightly increased gravity
+            const jumpForce = 9.0; // Slightly higher jump
+            const worldUp = new THREE.Vector3(0, 1, 0);
+            let playerIsOnGround = false;
 
             // --- Block Definitions ---
             const blockSize = 1;
             const blockHalfSize = blockSize / 2;
+            // Use a single geometry instance for performance
             const blockGeometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
 
-            // Simple materials (colors) - Ensure leaves material is defined correctly
+            // More complex materials using arrays for different faces
+            // Order: +X (right), -X (left), +Y (top), -Y (bottom), +Z (front), -Z (back)
             const materials = {
-                grass: new THREE.MeshLambertMaterial({ color: 0x228B22 }), // ForestGreen
-                dirt: new THREE.MeshLambertMaterial({ color: 0x8B4513 }), // SaddleBrown
-                stone: new THREE.MeshLambertMaterial({ color: 0x808080 }), // Gray
-                wood: new THREE.MeshLambertMaterial({ color: 0xA0522D }), // Sienna
-                leaves: new THREE.MeshLambertMaterial({ color: 0x006400 }) // DarkGreen - Removed transparency for simplicity unless needed
+                grass: [
+                    new THREE.MeshLambertMaterial({ color: 0x789c4d }), // Side grass+dirt
+                    new THREE.MeshLambertMaterial({ color: 0x789c4d }), // Side grass+dirt
+                    new THREE.MeshLambertMaterial({ color: 0x559e55 }), // Top grass
+                    new THREE.MeshLambertMaterial({ color: 0x8B4513 }), // Bottom dirt
+                    new THREE.MeshLambertMaterial({ color: 0x789c4d }), // Side grass+dirt
+                    new THREE.MeshLambertMaterial({ color: 0x789c4d })  // Side grass+dirt
+                ],
+                dirt: new THREE.MeshLambertMaterial({ color: 0x8B4513 }), // SaddleBrown (all sides)
+                stone: new THREE.MeshLambertMaterial({ color: 0x808080 }), // Gray (all sides)
+                wood: [ // Simple Log: Brown sides, lighter top/bottom rings
+                    new THREE.MeshLambertMaterial({ color: 0x6e4d2e }), // Side Bark
+                    new THREE.MeshLambertMaterial({ color: 0x6e4d2e }), // Side Bark
+                    new THREE.MeshLambertMaterial({ color: 0xab8860 }), // Top Ring
+                    new THREE.MeshLambertMaterial({ color: 0xab8860 }), // Bottom Ring
+                    new THREE.MeshLambertMaterial({ color: 0x6e4d2e }), // Side Bark
+                    new THREE.MeshLambertMaterial({ color: 0x6e4d2e })  // Side Bark
+                ],
+                leaves: new THREE.MeshLambertMaterial({ color: 0x3a7d44, transparent: true, opacity: 0.85 }) // DarkGreen, more transparent
             };
 
+            // Function to get material for a block type
+            function getBlockMaterial(type) {
+                return materials[type] || materials.stone; // Default to stone if type unknown
+            }
 
-            let selectedBlockType = 'grass'; // Default block type
+            let selectedBlockType = 'grass';
 
-            // --- World Generation (Simple Flat Plane) ---
-            const worldSize = 16; // Size of the initial ground plane (worldSize x worldSize)
-            const objects = []; // Array to hold interactive blocks (cubes)
+            // --- World Generation (2 Layers: Grass on Dirt) ---
+            const worldSize = 20; // Slightly larger world
+            const objects = []; // Array to hold interactive blocks
 
             for (let x = -worldSize / 2; x < worldSize / 2; x++) {
                 for (let z = -worldSize / 2; z < worldSize / 2; z++) {
-                    const block = new THREE.Mesh(blockGeometry, materials.grass);
-                    // Position blocks centered at integer coordinates, y=-0.5 is ground level
-                    block.position.set(x + blockHalfSize, -blockHalfSize, z + blockHalfSize);
-                    block.castShadow = true;
-                    block.receiveShadow = true;
-                    block.userData.blockType = 'grass'; // Store block type if needed later
-                    scene.add(block);
-                    objects.push(block); // Add ground blocks to the interactable objects list
+                    // Grass Layer (Y = -0.5)
+                    const grassBlock = new THREE.Mesh(blockGeometry, materials.grass);
+                    grassBlock.position.set(x + blockHalfSize, -blockHalfSize, z + blockHalfSize);
+                    grassBlock.castShadow = true;
+                    grassBlock.receiveShadow = true;
+                    grassBlock.userData.blockType = 'grass';
+                    scene.add(grassBlock);
+                    objects.push(grassBlock);
+
+                    // Dirt Layer (Y = -1.5)
+                    const dirtBlock = new THREE.Mesh(blockGeometry, materials.dirt);
+                    dirtBlock.position.set(x + blockHalfSize, -blockSize - blockHalfSize, z + blockHalfSize);
+                    dirtBlock.castShadow = true;
+                    dirtBlock.receiveShadow = true;
+                    dirtBlock.userData.blockType = 'dirt';
+                    scene.add(dirtBlock);
+                    objects.push(dirtBlock);
                 }
             }
-             // Set initial camera height above the ground plane
+            // Set initial camera height above the ground plane
             camera.position.y = playerHeight;
 
             // --- Controls ---
-            const controls = {
-                forward: false,
-                backward: false,
-                left: false,
-                right: false,
-                jump: false
-            };
-            let moveSpeed = 5.0;
+            const controls = { forward: false, backward: false, left: false, right: false, jump: false };
+            let moveSpeed = 5.5; // Slightly faster movement
             let mouseSensitivity = 0.002;
             let isPointerLocked = false;
-            const euler = new THREE.Euler(0, 0, 0, 'YXZ'); // To control camera rotation
+            const euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
+            // Event listeners (keydown, keyup, mousemove, pointerlock, mousedown, contextmenu, resize)
             document.addEventListener('keydown', (event) => {
-                // Allow movement keys even if pointer isn't locked, but maybe less intuitive
                 switch (event.code) {
                     case 'KeyW': case 'ArrowUp': controls.forward = true; break;
                     case 'KeyS': case 'ArrowDown': controls.backward = true; break;
                     case 'KeyA': case 'ArrowLeft': controls.left = true; break;
                     case 'KeyD': case 'ArrowRight': controls.right = true; break;
-                    case 'Space': if (playerIsOnGround) controls.jump = true; break; // Only allow jump if on ground
-                    // Block selection
+                    case 'Space':
+                        // Set jump flag only if on ground and not already trying to jump
+                        if (playerIsOnGround && !controls.jump) {
+                           controls.jump = true; // Set the flag to jump
+                           playSound('jump');    // Play jump sound
+                        }
+                        break;
                     case 'Digit1': selectBlock('grass'); break;
                     case 'Digit2': selectBlock('dirt'); break;
                     case 'Digit3': selectBlock('stone'); break;
@@ -216,158 +330,101 @@
                     case 'Digit5': selectBlock('leaves'); break;
                 }
             });
-
-            document.addEventListener('keyup', (event) => {
+             document.addEventListener('keyup', (event) => {
                 switch (event.code) {
                     case 'KeyW': case 'ArrowUp': controls.forward = false; break;
                     case 'KeyS': case 'ArrowDown': controls.backward = false; break;
                     case 'KeyA': case 'ArrowLeft': controls.left = false; break;
                     case 'KeyD': case 'ArrowRight': controls.right = false; break;
-                    // Jump is an impulse, no keyup needed
+                    // No keyup needed for jump flag reset
                 }
             });
-
             document.addEventListener('mousemove', (event) => {
                 if (!isPointerLocked) return;
-                // Directly modify Euler angles based on mouse movement
-                euler.setFromQuaternion(camera.quaternion); // Get current orientation
-                euler.y -= event.movementX * mouseSensitivity; // Yaw (left/right)
-                euler.x -= event.movementY * mouseSensitivity; // Pitch (up/down)
-
-                // Clamp vertical rotation (pitch) to prevent camera flipping
+                euler.setFromQuaternion(camera.quaternion);
+                euler.y -= event.movementX * mouseSensitivity;
+                euler.x -= event.movementY * mouseSensitivity;
                 euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
-
-                // Apply the rotation back to the camera
                 camera.quaternion.setFromEuler(euler);
             });
-
-
-            // Pointer Lock API for mouse look
             document.body.addEventListener('click', () => {
                 if (!isPointerLocked) {
-                    document.body.requestPointerLock()
-                        .then(() => {
-                            // console.log('Pointer Lock requested successfully.'); // Less verbose
-                        })
-                        .catch(err => {
-                            console.error('Pointer Lock request failed:', err);
-                        });
+                     Tone.start(); // Ensure audio context is running
+                    document.body.requestPointerLock().catch(err => console.error('Pointer Lock request failed:', err));
                 }
             });
-
             document.addEventListener('pointerlockchange', () => {
                 isPointerLocked = document.pointerLockElement === document.body;
                 document.getElementById('instructions').style.display = isPointerLocked ? 'none' : 'block';
-                // console.log("Pointer Lock Status:", isPointerLocked); // Less verbose
             });
              document.addEventListener('pointerlockerror', (error) => {
                 console.error('Pointer Lock Error:', error);
-                document.getElementById('instructions').innerHTML = "Pointer Lock Failed. Try clicking again. <br/> Ensure the page has focus.";
+                document.getElementById('instructions').innerHTML = "Pointer Lock Failed. Try clicking again.";
              });
 
-            // --- Block Interaction ---
+            // --- Block Interaction (with Sound) ---
             const raycaster = new THREE.Raycaster();
-            const clickMaxDistance = 6; // How far the player can interact with blocks
-
+            const clickMaxDistance = 6;
             document.addEventListener('mousedown', (event) => {
-                if (!isPointerLocked) return; // Only interact if pointer is locked
-
-                // Raycast from camera center
-                raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Ray from center of screen
-                const intersects = raycaster.intersectObjects(objects, false); // Check intersection with our blocks
+                if (!isPointerLocked) return;
+                raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+                const intersects = raycaster.intersectObjects(objects, false);
 
                 if (intersects.length > 0) {
                     const intersect = intersects[0];
-
-                    // Prevent interacting with blocks too far away
                     if (intersect.distance > clickMaxDistance) return;
 
                     if (event.button === 0) { // Left Click: Remove Block
-                        // Optional: Prevent removing the base ground blocks (y = -0.5)
-                        if (intersect.object.position.y < 0) {
-                            // console.log("Cannot remove base ground block."); // Less verbose
-                            return;
-                        }
+                        if (intersect.object.position.y <= -1.5) return; // Don't remove bottom dirt layer
 
+                        playSound('break'); // Play break sound
                         scene.remove(intersect.object);
-                        // Remove from the interactable objects array
                         const index = objects.indexOf(intersect.object);
-                        if (index > -1) {
-                            objects.splice(index, 1);
-                        }
-                        // Dispose geometry and material to free memory (important for many blocks)
-                        if (intersect.object.geometry) intersect.object.geometry.dispose();
-                        // Material is shared, so don't dispose here
+                        if (index > -1) objects.splice(index, 1);
+                        // Geometry is shared, no need to dispose here
+                        // Materials are shared or arrays, don't dispose individually
 
                     } else if (event.button === 2) { // Right Click: Place Block
-                        const newBlockMaterial = materials[selectedBlockType];
-                        if (!newBlockMaterial) {
-                             console.error("Invalid block type selected:", selectedBlockType);
-                             return;
-                        }
-                        const voxel = new THREE.Mesh(blockGeometry, newBlockMaterial);
+                        const blockMaterial = getBlockMaterial(selectedBlockType);
+                        if (!blockMaterial) return;
 
-                        // Calculate placement position based on the face the ray hit
-                        const placementPos = intersect.object.position.clone();
-                        placementPos.add(intersect.face.normal); // Move one unit along the normal of the clicked face
-
-                        // Snap to grid - position based on center of the block
+                        const voxel = new THREE.Mesh(blockGeometry, blockMaterial);
+                        const placementPos = intersect.object.position.clone().add(intersect.face.normal);
                         voxel.position.set(
                             Math.floor(placementPos.x) + blockHalfSize,
                             Math.floor(placementPos.y) + blockHalfSize,
                             Math.floor(placementPos.z) + blockHalfSize
                         );
 
-                        // --- Collision Check Before Placing ---
-                        // Define player bounding box based on camera position
-                        const playerMin = new THREE.Vector3(
-                            camera.position.x - playerHalfWidth,
-                            camera.position.y - playerHalfHeight,
-                            camera.position.z - playerHalfWidth
-                        );
-                        const playerMax = new THREE.Vector3(
-                            camera.position.x + playerHalfWidth,
-                            camera.position.y + playerHalfHeight,
-                            camera.position.z + playerHalfWidth
-                        );
-                        // Define new block bounding box
-                        const blockMin = voxel.position.clone().subScalar(blockHalfSize);
-                        const blockMax = voxel.position.clone().addScalar(blockHalfSize);
+                        // Collision checks
+                         const playerBox = new THREE.Box3().setFromCenterAndSize(
+                             new THREE.Vector3(camera.position.x, camera.position.y - playerHalfHeight, camera.position.z),
+                             new THREE.Vector3(playerWidth, playerHeight, playerWidth)
+                         );
+                         const blockBox = new THREE.Box3().setFromCenterAndSize(
+                             voxel.position,
+                             new THREE.Vector3(blockSize, blockSize, blockSize)
+                         );
+                         const positionOccupied = objects.some(obj => obj.position.distanceToSquared(voxel.position) < 0.1);
 
-                        // Check for overlap between player and new block position
-                        const playerOverlaps = playerMax.x > blockMin.x && playerMin.x < blockMax.x &&
-                                               playerMax.y > blockMin.y && playerMin.y < blockMax.y &&
-                                               playerMax.z > blockMin.z && playerMin.z < blockMax.z;
+                         if (playerBox.intersectsBox(blockBox)) { return; }
+                         if (positionOccupied) { return; }
 
-                        // Check if block position is already occupied
-                        const positionOccupied = objects.some(obj => obj.position.distanceToSquared(voxel.position) < 0.1); // Check distance squared
-
-                        if (playerOverlaps) {
-                            // console.log("Cannot place block inside player."); // Less verbose
-                            return; // Prevent placing block where the player is
-                        }
-                        if (positionOccupied) {
-                             // console.log("Position already occupied."); // Less verbose
-                             return; // Prevent placing block on top of existing block
-                        }
-                        // --- End Collision Check ---
-
+                        playSound('place'); // Play place sound
                         voxel.castShadow = true;
                         voxel.receiveShadow = true;
-                        voxel.userData.blockType = selectedBlockType; // Store block type
+                        voxel.userData.blockType = selectedBlockType;
                         scene.add(voxel);
-                        objects.push(voxel); // Add to interactable objects
+                        objects.push(voxel);
                     }
                 }
             });
-
-            // Prevent context menu on right click within the body
             document.body.addEventListener('contextmenu', (event) => event.preventDefault());
 
             // --- Block Selector UI ---
             const blockOptions = document.querySelectorAll('.block-option');
             function selectBlock(type) {
-                if (!materials[type]) return; // Ignore invalid types
+                if (!materials[type]) return;
                 selectedBlockType = type;
                 blockOptions.forEach(option => {
                     option.classList.remove('selected');
@@ -378,7 +435,7 @@
             }
             blockOptions.forEach(option => {
                 option.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Prevent click from triggering pointer lock on the body
+                    e.stopPropagation();
                     selectBlock(option.dataset.type);
                 });
             });
@@ -390,163 +447,94 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
 
-            // --- Game Loop ---
+            // --- Game Loop (Physics and Rendering) ---
             const clock = new THREE.Clock();
-            const moveDirection = new THREE.Vector3(); // Reusable vectors
+            const moveDirection = new THREE.Vector3();
             const rightDirection = new THREE.Vector3();
             const finalMove = new THREE.Vector3();
 
             function animate() {
                 requestAnimationFrame(animate);
-
-                const delta = Math.min(clock.getDelta(), 0.05); // Get time delta, clamp to avoid large jumps
+                const delta = Math.min(clock.getDelta(), 0.05);
 
                 // --- Player Movement Calculation ---
-                // Reset horizontal velocity each frame, apply based on input
-                playerVelocity.x = 0;
-                playerVelocity.z = 0;
-
-                // Get forward direction (along Z axis in camera space) projected onto XZ plane
-                camera.getWorldDirection(moveDirection);
-                moveDirection.y = 0;
-                moveDirection.normalize();
-
-                // Get right direction (cross product of forward and world up)
-                // *** THIS IS THE CORRECTED LINE ***
+                playerVelocity.x = 0; playerVelocity.z = 0;
+                camera.getWorldDirection(moveDirection).y = 0; moveDirection.normalize();
                 rightDirection.crossVectors(moveDirection, worldUp).normalize();
 
+                let moveX = 0, moveZ = 0;
+                if (controls.forward) moveZ += 1; if (controls.backward) moveZ -= 1;
+                if (controls.left) moveX -= 1; if (controls.right) moveX += 1;
 
-                // Calculate movement intention based on controls
-                let moveX = 0; // Corresponds to rightDirection
-                let moveZ = 0; // Corresponds to moveDirection (forward is negative Z relative to camera)
-                if (controls.forward) moveZ += 1;  // Move along positive moveDirection (forward)
-                if (controls.backward) moveZ -= 1; // Move along negative moveDirection (backward)
-                if (controls.left) moveX -= 1;     // Move along negative rightDirection (left)
-                if (controls.right) moveX += 1;    // Move along positive rightDirection (right)
-
-                // Combine directions
-                finalMove.set(0,0,0); // Reset final move vector
-                // Apply movement along the calculated direction vectors
-                // Note: We add the scaled *right* vector for X input, and the scaled *forward* vector for Z input.
+                finalMove.set(0,0,0);
                 finalMove.addScaledVector(rightDirection, moveX);
                 finalMove.addScaledVector(moveDirection, moveZ);
+                if (finalMove.lengthSq() > 1.1) finalMove.normalize();
 
-
-                // Normalize if moving diagonally to prevent faster diagonal speed
-                 if (finalMove.lengthSq() > 1.1) { // Check if magnitude is significantly > 1 (faster than normalizing just 1,0 or 0,1)
-                     finalMove.normalize();
-                 }
-
-                // Apply speed to set horizontal velocity for this frame
                 playerVelocity.x = finalMove.x * moveSpeed;
                 playerVelocity.z = finalMove.z * moveSpeed;
 
-
                 // --- Physics Update (Gravity and Collision) ---
-
-                // Apply gravity to vertical velocity
                 playerVelocity.y += gravity * delta;
-
-                // Calculate displacement for this frame
                 const deltaPosition = playerVelocity.clone().multiplyScalar(delta);
-
-                // Store current position before collision checks
                 const currentPosition = camera.position.clone();
-
-                // Calculate potential next position
                 const nextPosition = currentPosition.clone().add(deltaPosition);
+                playerIsOnGround = false; // Assume not on ground until collision check confirms
 
-                // --- Collision Detection and Resolution ---
-                playerIsOnGround = false; // Reset ground status
-
-                // Iterate through potential colliders (objects)
                 for (const block of objects) {
                     const blockPos = block.position;
                     const blockMin = blockPos.clone().subScalar(blockHalfSize);
                     const blockMax = blockPos.clone().addScalar(blockHalfSize);
+                    const playerMin = new THREE.Vector3(nextPosition.x - playerHalfWidth, nextPosition.y - playerHalfHeight, nextPosition.z - playerHalfWidth);
+                    const playerMax = new THREE.Vector3(nextPosition.x + playerHalfWidth, nextPosition.y + playerHalfHeight, nextPosition.z + playerHalfWidth);
 
-                    // Player bounding box at *next* position
-                    const playerMin = new THREE.Vector3(
-                        nextPosition.x - playerHalfWidth,
-                        nextPosition.y - playerHalfHeight,
-                        nextPosition.z - playerHalfWidth
-                    );
-                    const playerMax = new THREE.Vector3(
-                        nextPosition.x + playerHalfWidth,
-                        nextPosition.y + playerHalfHeight,
-                        nextPosition.z + playerHalfWidth
-                    );
+                    // Basic AABB collision check and resolution
+                    if (playerMax.x > blockMin.x && playerMin.x < blockMax.x && playerMax.y > blockMin.y && playerMin.y < blockMax.y && playerMax.z > blockMin.z && playerMin.z < blockMax.z) {
+                        const overlapX1 = playerMax.x - blockMin.x, overlapX2 = blockMax.x - playerMin.x;
+                        const overlapY1 = playerMax.y - blockMin.y, overlapY2 = blockMax.y - playerMin.y;
+                        const overlapZ1 = playerMax.z - blockMin.z, overlapZ2 = blockMax.z - playerMin.z;
+                        const minOverlapX = Math.min(overlapX1, overlapX2), minOverlapY = Math.min(overlapY1, overlapY2), minOverlapZ = Math.min(overlapZ1, overlapZ2);
 
-                    // Check for AABB overlap
-                    if (playerMax.x > blockMin.x && playerMin.x < blockMax.x &&
-                        playerMax.y > blockMin.y && playerMin.y < blockMax.y &&
-                        playerMax.z > blockMin.z && playerMin.z < blockMax.z)
-                    {
-                        // --- Resolve Collision ---
-                        // Calculate overlap on each axis
-                        const overlapX1 = playerMax.x - blockMin.x;
-                        const overlapX2 = blockMax.x - playerMin.x;
-                        const overlapY1 = playerMax.y - blockMin.y;
-                        const overlapY2 = blockMax.y - playerMin.y;
-                        const overlapZ1 = playerMax.z - blockMin.z;
-                        const overlapZ2 = blockMax.z - playerMin.z;
-
-                        // Find minimum overlap axis
-                        const minOverlapX = Math.min(overlapX1, overlapX2);
-                        const minOverlapY = Math.min(overlapY1, overlapY2);
-                        const minOverlapZ = Math.min(overlapZ1, overlapZ2);
-
-                        // Resolve collision by pushing out along the axis of minimum overlap
-                        if (minOverlapY < minOverlapX && minOverlapY < minOverlapZ) {
-                            // Resolve Y collision
-                            if (overlapY1 < overlapY2) { // Came from below (hitting head)
-                                nextPosition.y = blockMin.y - playerHalfHeight;
-                                if (playerVelocity.y > 0) playerVelocity.y = 0; // Stop upward movement
-                            } else { // Came from above (landing)
-                                nextPosition.y = blockMax.y + playerHalfHeight;
-                                if (playerVelocity.y < 0) {
-                                     playerVelocity.y = 0; // Stop falling
-                                     playerIsOnGround = true; // Landed on ground
-                                }
+                        if (minOverlapY < minOverlapX && minOverlapY < minOverlapZ) { // Y collision is smallest overlap
+                            if (overlapY1 < overlapY2) { // Hit head from below
+                                nextPosition.y = blockMin.y - playerHalfHeight; if (playerVelocity.y > 0) playerVelocity.y = 0;
+                            } else { // Landed on top
+                                nextPosition.y = blockMax.y + playerHalfHeight; if (playerVelocity.y < 0) { playerVelocity.y = 0; playerIsOnGround = true; } // Set ground flag here
                             }
-                        } else if (minOverlapX < minOverlapZ) {
-                            // Resolve X collision
-                            if (overlapX1 < overlapX2) { // Hit left side of block (-X face)
-                                nextPosition.x = blockMin.x - playerHalfWidth;
-                            } else { // Hit right side of block (+X face)
-                                nextPosition.x = blockMax.x + playerHalfWidth;
-                            }
-                            if (Math.abs(playerVelocity.x) > 0.01) playerVelocity.x = 0; // Stop horizontal movement in X
-                        } else {
-                            // Resolve Z collision
-                            if (overlapZ1 < overlapZ2) { // Hit back side of block (-Z face)
-                                nextPosition.z = blockMin.z - playerHalfWidth;
-                            } else { // Hit front side of block (+Z face)
-                                nextPosition.z = blockMax.z + playerHalfWidth;
-                            }
-                             if (Math.abs(playerVelocity.z) > 0.01) playerVelocity.z = 0; // Stop horizontal movement in Z
+                        } else if (minOverlapX < minOverlapZ) { // X collision is smallest overlap
+                            if (overlapX1 < overlapX2) { nextPosition.x = blockMin.x - playerHalfWidth; } else { nextPosition.x = blockMax.x + playerHalfWidth; }
+                            if (Math.abs(playerVelocity.x) > 0.01) playerVelocity.x = 0;
+                        } else { // Z collision is smallest overlap
+                            if (overlapZ1 < overlapZ2) { nextPosition.z = blockMin.z - playerHalfWidth; } else { nextPosition.z = blockMax.z + playerHalfWidth; }
+                            if (Math.abs(playerVelocity.z) > 0.01) playerVelocity.z = 0;
                         }
                     }
-                } // End collision loop
-
-                // Update camera position with the (potentially adjusted) next position
-                camera.position.copy(nextPosition);
-
+                }
+                camera.position.copy(nextPosition); // Update position after collision resolution
 
                 // --- Handle Jumping ---
+                // Apply jump force if the flag is set AND player is determined to be on the ground this frame
                 if (controls.jump && playerIsOnGround) {
                     playerVelocity.y = jumpForce; // Apply jump impulse
-                    controls.jump = false;      // Consume jump input
+                    controls.jump = false;      // Consume jump input immediately
                     playerIsOnGround = false;   // Player is now airborne
                 }
 
+                // Reset jump flag if airborne (safety net)
+                 if (!playerIsOnGround) {
+                     controls.jump = false;
+                 }
+
+
                 // --- Prevent Falling Through World ---
-                if (camera.position.y < -20) {
-                    // Reset player position and velocity if they fall too far
-                    camera.position.set(0, playerHeight * 2, 5); // Reset position higher up
-                    playerVelocity.set(0, 0, 0); // Reset velocity
-                    playerIsOnGround = false; // Not on ground after reset
+                if (camera.position.y < -30) { // Increased fall distance
+                    camera.position.set(0, playerHeight * 2, 5);
+                    playerVelocity.set(0, 0, 0);
+                    playerIsOnGround = false;
                 }
+
+                // --- Update Skybox Position ---
+                 skybox.position.copy(camera.position); // Keep skybox centered on camera
 
                 // --- Render Scene ---
                 renderer.render(scene, camera);
@@ -554,11 +542,9 @@
 
             // --- Start Animation Loop ---
              window.onload = function () {
-                // Start the animation on window load.
-                // console.log("Window loaded, starting animation loop."); // Less verbose
                 animate();
             }
-        } // End of Three.js check
+        } // End of library check
     </script>
 </body>
 </html>
