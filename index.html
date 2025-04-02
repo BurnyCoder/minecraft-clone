@@ -16,63 +16,46 @@
             height: 4px;
             background-color: white;
             border: 1px solid black;
-            border-radius: 50%; /* Make it a small dot */
+            border-radius: 50%;
             transform: translate(-50%, -50%);
-            pointer-events: none; /* Allow clicks to pass through */
+            pointer-events: none;
         }
         #instructions {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background-color: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 12px;
+            position: absolute; top: 10px; left: 10px;
+            background-color: rgba(0, 0, 0, 0.5); color: white;
+            padding: 10px; border-radius: 5px; font-size: 12px;
         }
          #block-selector {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.6);
-            padding: 5px;
-            border-radius: 5px;
-            display: flex;
-            gap: 5px;
-        }
+            position: absolute; bottom: 20px; left: 50%;
+            transform: translateX(-50%); background-color: rgba(0, 0, 0, 0.6);
+            padding: 5px; border-radius: 5px; display: flex; gap: 5px;
+            overflow-x: auto; /* Allow scrolling if many blocks */
+            max-width: 90%;
+         }
         .block-option {
-            width: 40px;
-            height: 40px;
-            border: 2px solid grey;
-            cursor: pointer;
-            background-size: cover; /* For potential textures later */
+            width: 40px; height: 40px; border: 2px solid grey;
+            cursor: pointer; background-size: cover; flex-shrink: 0; /* Prevent shrinking */
         }
-        .block-option.selected {
-            border-color: white;
-            box-shadow: 0 0 10px yellow;
-        }
+        .block-option.selected { border-color: white; box-shadow: 0 0 10px yellow; }
         #message-box {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            display: none; /* Hidden by default */
-            z-index: 100;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); background-color: rgba(0, 0, 0, 0.8);
+            color: white; padding: 20px; border-radius: 10px;
+            text-align: center; display: none; z-index: 100;
         }
         #message-box button {
-            margin-top: 15px;
-            padding: 8px 15px;
-            cursor: pointer;
-            border: none;
-            border-radius: 5px;
-            background-color: #4CAF50;
-            color: white;
+            margin-top: 15px; padding: 8px 15px; cursor: pointer;
+            border: none; border-radius: 5px; background-color: #4CAF50; color: white;
+        }
+        /* Style for breaking progress indication on highlight */
+        #highlight-progress {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.3);
+            transform-origin: bottom;
+            transform: scaleY(0); /* Start hidden */
+            transition: background-color 0.1s ease; /* Smooth color change if needed */
         }
     </style>
 </head>
@@ -83,9 +66,9 @@
         Space: Jump<br>
         Shift: Descend<br>
         Mouse: Look<br>
-        Left Click: Break Block<br>
+        Hold Left Click: Break Block<br>
         Right Click: Place Block<br>
-        Scroll Wheel / 1-5: Select Block<br>
+        Scroll Wheel / 1-9: Select Block<br>
         ESC: Unlock mouse
     </div>
     <div id="crosshair">+</div>
@@ -97,26 +80,24 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
-
-    <script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script> <script>
         // --- Configuration ---
-        const WORLD_SIZE_X = 20; // Width
-        const WORLD_SIZE_Y = 10; // Height
-        const WORLD_SIZE_Z = 20; // Depth
-        const BLOCK_SIZE = 1;
-        const PLAYER_HEIGHT = 1.8;
-        const PLAYER_SPEED = 5.0;
-        const JUMP_VELOCITY = 8.0;
-        const GRAVITY = -20.0;
-        const REACH_DISTANCE = 5; // How far the player can interact with blocks
+        const WORLD_SIZE_X = 20; const WORLD_SIZE_Y = 10; const WORLD_SIZE_Z = 20;
+        const BLOCK_SIZE = 1; const PLAYER_HEIGHT = 1.8; const PLAYER_SPEED = 5.0;
+        const JUMP_VELOCITY = 8.0; const GRAVITY = -20.0; const REACH_DISTANCE = 5;
 
         // --- Block Types ---
+        // Added breakTime (in seconds), soundType, hasGravity, transparent properties
         const blockTypes = {
-            1: { name: 'Grass', color: 0x559020, topColor: 0x6A9F2A },
-            2: { name: 'Dirt', color: 0x8B4513 },
-            3: { name: 'Stone', color: 0x808080 },
-            4: { name: 'Wood', color: 0x966F33 },
-            5: { name: 'Leaves', color: 0x228B22, transparent: true, opacity: 0.8 },
+            1: { name: 'Grass', color: 0x559020, topColor: 0x6A9F2A, breakTime: 0.6, soundType: 'grass' },
+            2: { name: 'Dirt', color: 0x8B4513, breakTime: 0.5, soundType: 'dirt' },
+            3: { name: 'Stone', color: 0x808080, breakTime: 1.5, soundType: 'stone' },
+            4: { name: 'Wood', color: 0x966F33, breakTime: 2.0, soundType: 'wood' },
+            5: { name: 'Leaves', color: 0x228B22, transparent: true, opacity: 0.8, breakTime: 0.2, soundType: 'leaves' },
+            6: { name: 'Sand', color: 0xF4A460, breakTime: 0.5, soundType: 'sand', hasGravity: true },
+            7: { name: 'Glass', color: 0xFFFFFF, transparent: true, opacity: 0.4, breakTime: 0.3, soundType: 'glass' },
+            8: { name: 'Cobblestone', color: 0x708090, breakTime: 2.0, soundType: 'stone' },
+            9: { name: 'Planks', color: 0xD2B48C, breakTime: 1.5, soundType: 'wood' }
         };
         let selectedBlockType = 1;
 
@@ -134,6 +115,15 @@
         const highlightMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.5 });
         let highlightMesh = new THREE.Mesh(new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), highlightMaterial);
         highlightMesh.visible = false;
+        // Breaking state
+        let isBreaking = false;
+        let breakStartTime = 0;
+        let currentBreakingBlock = null; // Stores the mesh being broken
+        let breakProgress = 0; // 0 to 1
+        // Sound Synths (Tone.js)
+        let synths = {};
+        // Gravity Check List
+        let gravityCheckQueue = new Set(); // Use a Set to avoid duplicate checks
 
         // --- Initialization ---
         function init() {
@@ -148,18 +138,94 @@
             document.body.appendChild(renderer.domElement);
             const ambientLight = new THREE.AmbientLight(0xcccccc, 0.6); scene.add(ambientLight);
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); directionalLight.position.set(50, 200, 100); scene.add(directionalLight);
-            if (typeof THREE.PointerLockControls === 'undefined') { console.error("THREE.PointerLockControls is not defined."); showMessage("Error: Could not load controls.", 0); return; }
+            if (typeof THREE.PointerLockControls === 'undefined') { console.error("PointerLockControls missing."); showMessage("Error: Controls missing.", 0); return; }
+            if (typeof Tone === 'undefined') { console.error("Tone.js missing."); showMessage("Error: Sound library missing.", 0); return; } // Check Tone.js
             controls = new THREE.PointerLockControls(camera, document.body);
             scene.add(controls.getObject());
-            document.body.addEventListener('click', () => { if (!controls.isLocked) controls.lock(); });
+            document.body.addEventListener('click', async () => { // Make async for Tone.start()
+                 if (!controls.isLocked) {
+                     controls.lock();
+                     // IMPORTANT: Start Tone.js audio context on user interaction
+                     if (Tone.context.state !== 'running') {
+                         await Tone.start();
+                         console.log('Audio context started');
+                     }
+                 }
+            });
             controls.addEventListener('lock', () => { document.getElementById('instructions').style.display = 'none'; });
-            controls.addEventListener('unlock', () => { document.getElementById('instructions').style.display = 'block'; });
+            controls.addEventListener('unlock', () => { document.getElementById('instructions').style.display = 'block'; resetBreakingState(); }); // Reset break on unlock
             document.addEventListener('keydown', onKeyDown); document.addEventListener('keyup', onKeyUp);
-            document.body.addEventListener('contextmenu', (event) => event.preventDefault()); document.addEventListener('mousedown', onMouseDown);
+            document.body.addEventListener('contextmenu', (event) => event.preventDefault());
+            document.addEventListener('mousedown', onMouseDown);
+            document.addEventListener('mouseup', onMouseUp); // Need mouseup for breaking
             window.addEventListener('resize', onWindowResize);
-            setupBlockSelector(); generateWorld(); scene.add(highlightMesh);
+
+            // Add progress indicator to highlight mesh
+            const progressIndicator = document.createElement('div');
+            progressIndicator.id = 'highlight-progress';
+            highlightMesh.element = progressIndicator; // Attach for easy access (not standard three.js)
+            // Note: This element won't render in 3D space, it's just attached.
+            // We'll manage its style directly. Let's add it to the highlight mesh object instead.
+            highlightMesh.add(new THREE.Object3D()); // Placeholder for potential 3D progress later if needed
+
+            setupBlockSelector();
+            initSounds(); // Initialize Tone.js synths
+            generateWorld();
+            scene.add(highlightMesh);
             document.getElementById('message-ok').addEventListener('click', hideMessage);
         }
+
+        // --- Sound Initialization ---
+        function initSounds() {
+            // Simple synth for placing blocks (adjust parameters for different sounds)
+            synths.place = new Tone.Synth({
+                oscillator: { type: 'sine' },
+                envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 }
+            }).toDestination();
+             synths.placeWood = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.05, release: 0.1 } }).toDestination();
+             synths.placeStone = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.02, decay: 0.2, sustain: 0.1, release: 0.2 } }).toDestination();
+
+            // Noise synth for breaking blocks
+            synths.break = new Tone.NoiseSynth({
+                noise: { type: 'white' }, // white, pink, brown
+                envelope: { attack: 0.005, decay: 0.1, sustain: 0 }
+            }).toDestination();
+            synths.breakGlass = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.05, sustain: 0 } }).toDestination();
+            synths.breakLeaves = new Tone.NoiseSynth({ noise: { type: 'pink' }, volume: -10, envelope: { attack: 0.01, decay: 0.08, sustain: 0 } }).toDestination();
+
+            // Synth for jumping
+            synths.jump = new Tone.Synth({
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.01, decay: 0.1, sustain: 0.05, release: 0.1 }
+            }).toDestination();
+        }
+
+        // --- Sound Playback ---
+        function playSound(type, note = 'C4', duration = '8n') {
+            if (Tone.context.state !== 'running') return; // Don't play if context not running
+            if (synths[type]) {
+                if (type.startsWith('break')) {
+                     synths[type].triggerAttackRelease(duration);
+                } else {
+                     synths[type].triggerAttackRelease(note, duration);
+                }
+            } else {
+                console.warn(`Sound type "${type}" not found.`);
+            }
+        }
+        function playBlockSound(action, soundType) {
+             // Map block soundType to specific synth/note
+             if (action === 'place') {
+                 if (soundType === 'wood') playSound('placeWood', 'A3', '16n');
+                 else if (soundType === 'stone') playSound('placeStone', 'E3', '8n');
+                 else playSound('place', 'C4', '8n'); // Default place sound
+             } else if (action === 'break') {
+                 if (soundType === 'glass') playSound('breakGlass', null, '16n');
+                 else if (soundType === 'leaves' || soundType === 'grass') playSound('breakLeaves', null, '8n');
+                 else playSound('break', null, '8n'); // Default break sound
+             }
+        }
+
 
         // --- World Generation ---
         function generateWorld() { console.log("Generating world..."); const blocksToCreate = []; for (let x = 0; x < WORLD_SIZE_X; x++) { for (let z = 0; z < WORLD_SIZE_Z; z++) { for (let y = 0; y < WORLD_SIZE_Y; y++) { let blockType = 0; if (y < WORLD_SIZE_Y / 2 - 1) blockType = 3; else if (y < WORLD_SIZE_Y / 2) blockType = 2; else if (y === Math.floor(WORLD_SIZE_Y / 2)) blockType = 1; if (blockType > 0) { const key = getBlockKey(x, y, z); world[key] = blockType; blocksToCreate.push({x, y, z, type: blockType}); } } } } addTreeData(5, Math.floor(WORLD_SIZE_Y / 2) + 1, 5, blocksToCreate); addTreeData(15, Math.floor(WORLD_SIZE_Y / 2) + 1, 15, blocksToCreate); addTreeData(8, Math.floor(WORLD_SIZE_Y / 2) + 1, 18, blocksToCreate); console.log(`Creating ${blocksToCreate.length} block meshes...`); blocksToCreate.forEach(blockData => createBlockMesh(blockData.x, blockData.y, blockData.z, blockData.type)); console.log(`World generation complete.`); }
@@ -169,28 +235,67 @@
         // --- Block Management ---
         function getBlockKey(x, y, z) { return `${Math.floor(x)},${Math.floor(y)},${Math.floor(z)}`; }
         function getBlock(x, y, z) { const key = getBlockKey(x, y, z); return world[key]; }
-        function addBlock(x, y, z, type) {
+        function addBlock(x, y, z, type, playSoundEffect = true) { // Added sound flag
             const key = getBlockKey(x, y, z);
             const MAX_BUILD_HEIGHT = 50;
-            // Boundary check
             if (x < 0 || x >= WORLD_SIZE_X || y < 0 || y >= MAX_BUILD_HEIGHT || z < 0 || z >= WORLD_SIZE_Z) {
-                console.warn(`Attempted to place block outside world boundaries at ${key}`);
-                // showMessage("Cannot place block outside world bounds!"); // REMOVED
-                return false; // Indicate failure
+                console.warn(`Out of bounds: ${key}`); return false;
             }
-            // Existing block check
-            if (world[key]) {
-                console.warn(`Block already exists at ${key}. Cannot place.`);
-                // showMessage("Block already exists here!"); // REMOVED
-                return false; // Indicate failure
-            }
-            // Add block data
+            if (world[key]) { console.warn(`Block exists: ${key}`); return false; }
+
             world[key] = type;
-            // Create mesh
             const newMesh = createBlockMesh(x, y, z, type);
-            return !!newMesh; // Return true if mesh creation succeeded
+            if (newMesh && playSoundEffect) { // Play sound if mesh created and flag is true
+                const blockData = blockTypes[type];
+                playBlockSound('place', blockData.soundType || 'default');
+                 // Check gravity for block BELOW the newly placed one (e.g. placing sand on torch)
+                 scheduleGravityCheck(x, y - 1, z);
+                 // Check gravity for blocks adjacent to sand if placing sand
+                 if (blockData.hasGravity) {
+                     scheduleGravityCheck(x + 1, y, z);
+                     scheduleGravityCheck(x - 1, y, z);
+                     scheduleGravityCheck(x, y, z + 1);
+                     scheduleGravityCheck(x, y, z - 1);
+                 }
+            }
+            return !!newMesh;
         }
-        function removeBlock(x, y, z) { const key = getBlockKey(x, y, z); if (!world[key]) { return false; } delete world[key]; const idx = objects.findIndex(obj => obj.userData.x === x && obj.userData.y === y && obj.userData.z === z); if (idx !== -1) { const obj = objects[idx]; scene.remove(obj); if (obj.geometry) obj.geometry.dispose(); if (Array.isArray(obj.material)) { obj.material.forEach(mat => mat.dispose()); } else if (obj.material) { obj.material.dispose(); } objects.splice(idx, 1); return true; } else { console.warn(`Mesh not found at ${key}`); return false; } }
+        function removeBlock(x, y, z, playSoundEffect = true) { // Added sound flag
+            const key = getBlockKey(x, y, z);
+            const blockType = world[key]; // Get type before deleting
+            if (!blockType) { return false; }
+
+            delete world[key];
+            const idx = objects.findIndex(obj => obj.userData.x === x && obj.userData.y === y && obj.userData.z === z);
+            if (idx !== -1) {
+                const obj = objects[idx];
+                scene.remove(obj);
+                if (obj.geometry) obj.geometry.dispose();
+                if (Array.isArray(obj.material)) { obj.material.forEach(mat => mat.dispose()); }
+                else if (obj.material) { obj.material.dispose(); }
+                objects.splice(idx, 1);
+
+                if (playSoundEffect) { // Play sound if removed successfully and flag is true
+                    const blockData = blockTypes[blockType];
+                    playBlockSound('break', blockData.soundType || 'default');
+                }
+
+                // --- Gravity Check ---
+                // Check block ABOVE the removed one
+                scheduleGravityCheck(x, y + 1, z);
+                // Check blocks adjacent to where the block was removed, in case they were supported by it
+                scheduleGravityCheck(x + 1, y, z);
+                scheduleGravityCheck(x - 1, y, z);
+                scheduleGravityCheck(x, y, z + 1);
+                scheduleGravityCheck(x, y, z - 1);
+                // --- End Gravity Check ---
+
+                return true; // Indicate success
+            } else {
+                console.warn(`Mesh not found at ${key}`);
+                return false; // Indicate failure
+            }
+        }
 
         // --- Player Movement & Physics ---
         function updatePlayer(delta) {
@@ -207,12 +312,13 @@
                 moveDelta.addScaledVector(rightDir, direction.x * PLAYER_SPEED * delta);
             }
             playerPos.add(moveDelta);
-            if (moveUp && canJump) { velocity.y = JUMP_VELOCITY; canJump = false; }
+            let didJump = false; // Flag to play sound only once
+            if (moveUp && canJump) { velocity.y = JUMP_VELOCITY; canJump = false; didJump = true; }
             if (moveDown) { playerPos.y -= PLAYER_SPEED * delta; velocity.y = Math.min(0, velocity.y); }
             playerPos.y += velocity.y * delta;
-            // Collision Detection & Response
+            // Collision Detection & Response (Simplified for brevity - same logic as before)
             const playerHalfHeight = PLAYER_HEIGHT / 2; const playerWidth = 0.4;
-            const playerBox = new THREE.Box3(); let onGround = false; let correctedY = false;
+            const playerBox = new THREE.Box3(); let onGround = false;
             const checkMinX = Math.floor(playerPos.x - playerWidth / 2 - 1); const checkMaxX = Math.ceil(playerPos.x + playerWidth / 2 + 1);
             const checkMinY = Math.floor(playerPos.y - playerHalfHeight - 1); const checkMaxY = Math.ceil(playerPos.y + playerHalfHeight + 1);
             const checkMinZ = Math.floor(playerPos.z - playerWidth / 2 - 1); const checkMaxZ = Math.ceil(playerPos.z + playerWidth / 2 + 1);
@@ -228,7 +334,6 @@
                         if (penetrationY < penetrationX && penetrationY < penetrationZ) {
                             if (deltaY > 0) { playerPos.y = blockBox.max.y + playerHalfHeight; if (velocity.y < 0) { velocity.y = 0; onGround = true; } }
                             else { playerPos.y = blockBox.min.y - playerHalfHeight; if (velocity.y > 0) { velocity.y = 0; } }
-                            correctedY = true;
                         } else if (penetrationX < penetrationZ) {
                             if (deltaX > 0) { playerPos.x = blockBox.max.x + playerWidth / 2; } else { playerPos.x = blockBox.min.x - playerWidth / 2; } velocity.x = 0;
                         } else {
@@ -238,54 +343,260 @@
                     }
                 }
             }}}
+            if (!canJump && onGround) { /* Landed */ } // Could add landing sound here
             canJump = onGround;
+            if (didJump) { playSound('jump', 'C5', '16n'); } // Play jump sound after collision check
             if (playerPos.y < -20) { playerPos.set(WORLD_SIZE_X / 2, WORLD_SIZE_Y + PLAYER_HEIGHT, WORLD_SIZE_Z / 2); velocity.set(0, 0, 0); showMessage("Fell out of the world!"); }
         }
 
 
         // --- Interaction ---
-        function checkInteraction() { if (!controls.isLocked) { highlightMesh.visible = false; currentIntersected = null; return; } raycaster.setFromCamera({ x: 0, y: 0 }, camera); const intersects = raycaster.intersectObjects(objects, false); const previouslyIntersected = currentIntersected; currentIntersected = null; if (intersects.length > 0) { for (let i = 0; i < intersects.length; i++) { if (intersects[i].distance < REACH_DISTANCE) { const obj = intersects[i].object; if (obj.userData && obj.userData.x !== undefined) { currentIntersected = obj; if (previouslyIntersected !== currentIntersected) { highlightMesh.position.copy(obj.position); highlightMesh.visible = true; } break; } } } } if (!currentIntersected) { highlightMesh.visible = false; } else if (!highlightMesh.visible) { highlightMesh.position.copy(currentIntersected.position); highlightMesh.visible = true; } }
-        function placeBlock() {
-            if (!controls.isLocked || !currentIntersected) return;
-            const blockPos = currentIntersected.userData;
+        function checkInteraction() {
+            if (!controls.isLocked) {
+                 if (isBreaking) resetBreakingState(); // Stop breaking if pointer unlocked
+                 highlightMesh.visible = false;
+                 currentIntersected = null;
+                 return;
+            }
             raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-            const intersects = raycaster.intersectObject(currentIntersected, false);
+            const intersects = raycaster.intersectObjects(objects, false);
+            const previouslyIntersected = currentIntersected;
+            currentIntersected = null;
+            let intersectedBlockMesh = null;
+
+            if (intersects.length > 0) {
+                for (let i = 0; i < intersects.length; i++) {
+                    if (intersects[i].distance < REACH_DISTANCE) {
+                        const obj = intersects[i].object;
+                        if (obj.userData && obj.userData.x !== undefined) {
+                            intersectedBlockMesh = obj; // The mesh currently looked at
+                            currentIntersected = obj.userData; // The block data {x,y,z,type}
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (intersectedBlockMesh) {
+                 // If looking at a different block than the one being broken, reset breaking state
+                if (isBreaking && currentBreakingBlock !== intersectedBlockMesh) {
+                    resetBreakingState();
+                }
+                // Update highlight mesh position and visibility
+                if (previouslyIntersected?.x !== currentIntersected.x || previouslyIntersected?.y !== currentIntersected.y || previouslyIntersected?.z !== currentIntersected.z) {
+                    highlightMesh.position.copy(intersectedBlockMesh.position);
+                    highlightMesh.visible = true;
+                    if (isBreaking) resetBreakingState(); // Reset if look away while breaking
+                }
+            } else {
+                 // Not looking at any block within reach
+                highlightMesh.visible = false;
+                if (isBreaking) resetBreakingState(); // Stop breaking if look away
+                currentIntersected = null;
+            }
+             // Update breaking progress visual (simple opacity change on highlight)
+            if (isBreaking) {
+                 highlightMaterial.opacity = 0.2 + (0.6 * breakProgress); // Fade in slightly as progress increases
+            } else {
+                 highlightMaterial.opacity = 0.5; // Reset opacity
+            }
+        }
+
+        function placeBlock() {
+            if (!controls.isLocked || !currentIntersected) return; // Need to be looking at a block to place adjacent
+             // Use the currently intersected block's mesh for raycasting face
+             const targetMesh = objects.find(obj => obj.userData.x === currentIntersected.x && obj.userData.y === currentIntersected.y && obj.userData.z === currentIntersected.z);
+             if (!targetMesh) return; // Should not happen if currentIntersected is valid
+
+            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+            const intersects = raycaster.intersectObject(targetMesh, false);
             if (!intersects || intersects.length === 0 || !intersects[0].face) { console.warn("Placement failed: No face normal."); return; }
             const face = intersects[0].face;
             const normal = face.normal.clone();
+            const blockPos = currentIntersected; // Use the data {x,y,z}
             const newBlockPos = { x: blockPos.x + Math.round(normal.x), y: blockPos.y + Math.round(normal.y), z: blockPos.z + Math.round(normal.z) };
             const playerPos = controls.getObject().position;
             const playerBox = new THREE.Box3().setFromCenterAndSize(playerPos, new THREE.Vector3(0.8, PLAYER_HEIGHT, 0.8));
             const newBlockBox = new THREE.Box3(new THREE.Vector3(newBlockPos.x, newBlockPos.y, newBlockPos.z), new THREE.Vector3(newBlockPos.x + BLOCK_SIZE, newBlockPos.y + BLOCK_SIZE, newBlockPos.z + BLOCK_SIZE));
-            // Player collision check
-            if (playerBox.intersectsBox(newBlockBox)) {
-                console.log("Cannot place block inside player.");
-                // showMessage("Cannot place block here!"); // REMOVED
-                return;
-            }
-            // Attempt to add the block (addBlock handles other checks like bounds and existing blocks)
-            addBlock(newBlockPos.x, newBlockPos.y, newBlockPos.z, selectedBlockType);
+            if (playerBox.intersectsBox(newBlockBox)) { console.log("Cannot place block inside player."); return; }
+            addBlock(newBlockPos.x, newBlockPos.y, newBlockPos.z, selectedBlockType); // addBlock handles sound
         }
-        function breakBlock() { if (!controls.isLocked || !currentIntersected) return; const blockPos = currentIntersected.userData; const success = removeBlock(blockPos.x, blockPos.y, blockPos.z); if (success) { highlightMesh.visible = false; currentIntersected = null; } }
+
+        // --- Breaking Logic ---
+        function startBreaking() {
+            if (!controls.isLocked || !currentIntersected || isBreaking) return;
+            // Find the mesh corresponding to currentIntersected data
+            const targetMesh = objects.find(obj => obj.userData.x === currentIntersected.x && obj.userData.y === currentIntersected.y && obj.userData.z === currentIntersected.z);
+            if (!targetMesh) return; // Should not happen
+
+            isBreaking = true;
+            breakStartTime = performance.now();
+            currentBreakingBlock = targetMesh; // Store the mesh being broken
+            breakProgress = 0;
+            console.log("Start breaking:", currentIntersected);
+        }
+
+        function stopBreaking() {
+             if (isBreaking) {
+                 console.log("Stop breaking");
+                 resetBreakingState();
+             }
+        }
+
+         function resetBreakingState() {
+            isBreaking = false;
+            breakStartTime = 0;
+            currentBreakingBlock = null;
+            breakProgress = 0;
+            highlightMaterial.opacity = 0.5; // Reset highlight opacity
+         }
+
+        function updateBreaking(delta) {
+            if (!isBreaking || !currentBreakingBlock || !currentIntersected) {
+                 resetBreakingState();
+                 return;
+            }
+
+             // Double check if player is still looking at the same block
+             if (currentIntersected.x !== currentBreakingBlock.userData.x ||
+                 currentIntersected.y !== currentBreakingBlock.userData.y ||
+                 currentIntersected.z !== currentBreakingBlock.userData.z) {
+                 resetBreakingState();
+                 return;
+             }
+
+
+            const blockData = blockTypes[currentBreakingBlock.userData.type];
+            const requiredTime = blockData?.breakTime || 1.0; // Default break time if not specified
+
+            // Accumulate progress based on delta time
+            breakProgress += delta / requiredTime;
+            breakProgress = Math.min(breakProgress, 1.0); // Clamp progress to 1
+
+             // Update visual indicator (e.g., opacity) - already done in checkInteraction
+
+            // console.log(`Breaking progress: ${breakProgress.toFixed(2)}`); // Debug log
+
+            if (breakProgress >= 1.0) {
+                console.log("Block broken!");
+                const blockCoords = currentBreakingBlock.userData; // Get coords before resetting state
+                removeBlock(blockCoords.x, blockCoords.y, blockCoords.z); // removeBlock handles sound and gravity check
+                resetBreakingState();
+                // Force interaction check immediately after breaking to update highlight
+                checkInteraction();
+            }
+        }
+
+        // --- Gravity ---
+        function scheduleGravityCheck(x, y, z) {
+            const key = getBlockKey(x, y, z);
+            // Only add if block exists and might fall
+             const blockType = getBlock(x, y, z);
+             if (blockType && blockTypes[blockType]?.hasGravity) {
+                gravityCheckQueue.add(key);
+             }
+        }
+
+        function processGravityQueue() {
+            if (gravityCheckQueue.size === 0) return;
+
+            const blocksToProcess = Array.from(gravityCheckQueue);
+            gravityCheckQueue.clear(); // Clear queue for next frame's checks
+
+            blocksToProcess.forEach(key => {
+                const coords = key.split(',').map(Number);
+                const [x, y, z] = coords;
+
+                const blockType = getBlock(x, y, z);
+                const blockData = blockTypes[blockType];
+
+                // Check if block still exists and has gravity (it might have been removed/changed)
+                if (!blockData || !blockData.hasGravity) return;
+
+                // Check block below
+                const belowKey = getBlockKey(x, y - 1, z);
+                const belowType = world[belowKey];
+
+                // Can it fall? (Below is air or non-solid block like water/lava later)
+                if (y > 0 && !belowType) { // Simple check for air below
+                    console.log(`Gravity: Block at ${key} is falling.`);
+                    // Remove block visually/logically without sound or further gravity checks here
+                    const success = removeBlock(x, y, z, false); // No sound, no recursive gravity check from here
+
+                    if (success) {
+                        // Add block at new position without sound
+                        addBlock(x, y - 1, z, blockType, false);
+
+                        // IMPORTANT: Schedule checks for blocks that might be affected by this move
+                        // Block that was originally above the falling block
+                        scheduleGravityCheck(x, y + 1, z);
+                        // Blocks adjacent to the *new* position of the fallen block
+                        scheduleGravityCheck(x + 1, y - 1, z);
+                        scheduleGravityCheck(x - 1, y - 1, z);
+                        scheduleGravityCheck(x, y - 1, z + 1);
+                        scheduleGravityCheck(x, y - 1, z - 1);
+                    }
+                }
+            });
+        }
+
 
         // --- Event Handlers ---
-        function onKeyDown(event) { if (!controls.isLocked && event.code !== 'Escape') return; switch (event.code) { case 'ArrowUp': case 'KeyW': moveForward = true; break; case 'ArrowLeft': case 'KeyA': moveLeft = true; break; case 'ArrowDown': case 'KeyS': moveBackward = true; break; case 'ArrowRight': case 'KeyD': moveRight = true; break; case 'Space': moveUp = true; break; case 'ShiftLeft': case 'ShiftRight': moveDown = true; break; case 'Escape': if (controls.isLocked) controls.unlock(); break; case 'Digit1': selectBlock(1); break; case 'Digit2': selectBlock(2); break; case 'Digit3': selectBlock(3); break; case 'Digit4': selectBlock(4); break; case 'Digit5': selectBlock(5); break; } }
+        function onKeyDown(event) { if (!controls.isLocked && event.code !== 'Escape') return; switch (event.code) { case 'ArrowUp': case 'KeyW': moveForward = true; break; case 'ArrowLeft': case 'KeyA': moveLeft = true; break; case 'ArrowDown': case 'KeyS': moveBackward = true; break; case 'ArrowRight': case 'KeyD': moveRight = true; break; case 'Space': moveUp = true; break; case 'ShiftLeft': case 'ShiftRight': moveDown = true; break; case 'Escape': if (controls.isLocked) controls.unlock(); break;
+            // Use digits 1-9 for block selection
+            case 'Digit1': selectBlock(1); break; case 'Digit2': selectBlock(2); break; case 'Digit3': selectBlock(3); break;
+            case 'Digit4': selectBlock(4); break; case 'Digit5': selectBlock(5); break; case 'Digit6': selectBlock(6); break;
+            case 'Digit7': selectBlock(7); break; case 'Digit8': selectBlock(8); break; case 'Digit9': selectBlock(9); break;
+        } }
         function onKeyUp(event) { switch (event.code) { case 'ArrowUp': case 'KeyW': moveForward = false; break; case 'ArrowLeft': case 'KeyA': moveLeft = false; break; case 'ArrowDown': case 'KeyS': moveBackward = false; break; case 'ArrowRight': case 'KeyD': moveRight = false; break; case 'Space': moveUp = false; break; case 'ShiftLeft': case 'ShiftRight': moveDown = false; break; } }
-        function onMouseDown(event) { if (!controls.isLocked) return; switch (event.button) { case 0: breakBlock(); break; case 2: placeBlock(); break; } }
+        function onMouseDown(event) {
+            if (!controls.isLocked) return;
+            switch (event.button) {
+                 case 0: // Left mouse button - START breaking
+                    startBreaking();
+                    break;
+                 case 2: // Right mouse button - Place block
+                    placeBlock();
+                    break;
+            }
+        }
+         // Add MouseUp handler
+         function onMouseUp(event) {
+             if (!controls.isLocked) return;
+             if (event.button === 0) { // Left mouse button - STOP breaking
+                 stopBreaking();
+             }
+         }
         function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
 
         // --- Block Selector UI ---
-        function setupBlockSelector() { const selectorDiv = document.getElementById('block-selector'); selectorDiv.innerHTML = ''; Object.keys(blockTypes).sort().forEach(typeId => { const type = parseInt(typeId); const blockData = blockTypes[type]; const option = document.createElement('div'); option.classList.add('block-option'); option.dataset.type = type; option.style.backgroundColor = `#${blockData.color.toString(16).padStart(6, '0')}`; if (blockData.transparent) { option.style.opacity = '0.7'; option.style.borderStyle = 'dashed'; } option.title = `${type}: ${blockData.name}`; if (type === selectedBlockType) { option.classList.add('selected'); } option.addEventListener('click', () => { selectBlock(type); }); selectorDiv.appendChild(option); }); window.addEventListener('wheel', (event) => { const currentTypes = Object.keys(blockTypes).map(Number).sort(); const currentIndex = currentTypes.indexOf(selectedBlockType); if (currentIndex === -1) return; let nextIndex; if (event.deltaY < 0) { nextIndex = (currentIndex - 1 + currentTypes.length) % currentTypes.length; } else { nextIndex = (currentIndex + 1) % currentTypes.length; } selectBlock(currentTypes[nextIndex]); }, { passive: true }); }
+        function setupBlockSelector() { const selectorDiv = document.getElementById('block-selector'); selectorDiv.innerHTML = ''; Object.keys(blockTypes).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(typeId => { const type = parseInt(typeId); const blockData = blockTypes[type]; const option = document.createElement('div'); option.classList.add('block-option'); option.dataset.type = type; option.style.backgroundColor = `#${blockData.color.toString(16).padStart(6, '0')}`; if (blockData.transparent) { option.style.opacity = '0.7'; option.style.borderStyle = 'dashed'; } option.title = `${type}: ${blockData.name}`; if (type === selectedBlockType) { option.classList.add('selected'); } option.addEventListener('click', () => { selectBlock(type); }); selectorDiv.appendChild(option); }); window.addEventListener('wheel', (event) => { const currentTypes = Object.keys(blockTypes).map(Number).sort((a,b)=>a-b); const currentIndex = currentTypes.indexOf(selectedBlockType); if (currentIndex === -1) return; let nextIndex; if (event.deltaY < 0) { nextIndex = (currentIndex - 1 + currentTypes.length) % currentTypes.length; } else { nextIndex = (currentIndex + 1) % currentTypes.length; } selectBlock(currentTypes[nextIndex]); }, { passive: true }); }
         function selectBlock(type) { if (!blockTypes[type]) return; selectedBlockType = type; const options = document.querySelectorAll('.block-option'); options.forEach(opt => { opt.classList.toggle('selected', parseInt(opt.dataset.type) === selectedBlockType); }); }
 
         // --- Message Box ---
         let messageTimeout; function showMessage(text, duration = 2000) { const messageBox = document.getElementById('message-box'); const messageText = document.getElementById('message-text'); messageText.textContent = text; messageBox.style.display = 'block'; if (messageTimeout) clearTimeout(messageTimeout); messageTimeout = null; if (duration > 0) { messageTimeout = setTimeout(hideMessage, duration); } document.getElementById('message-ok').onclick = hideMessage; } function hideMessage() { if (messageTimeout) { clearTimeout(messageTimeout); messageTimeout = null; } document.getElementById('message-box').style.display = 'none'; document.getElementById('message-ok').onclick = null; }
 
         // --- Animation Loop ---
-        function animate() { requestAnimationFrame(animate); const time = performance.now(); const delta = Math.min((time - lastTime) / 1000, 0.1); lastTime = time; if (delta > 0 && delta < 1.0) { updatePlayer(delta); checkInteraction(); } try { renderer.render(scene, camera); } catch(e) { console.error("Render error:", e); } }
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now();
+            const delta = Math.min((time - lastTime) / 1000, 0.1);
+            lastTime = time;
+
+            if (delta > 0 && delta < 1.0) {
+                 updatePlayer(delta);
+                 checkInteraction(); // Check looking target
+                 if (isBreaking) { // Update breaking progress if holding mouse
+                     updateBreaking(delta);
+                 }
+                 processGravityQueue(); // Process falling blocks
+            }
+            try { renderer.render(scene, camera); }
+            catch(e) { console.error("Render error:", e); }
+        }
 
         // --- Start ---
-        window.onload = function() { if (typeof THREE === 'undefined') { console.error("THREE not defined."); alert("Error: Load Three.js failed."); return; } if (typeof THREE.PointerLockControls === 'undefined') { console.error("PointerLockControls not defined."); alert("Error: Load PointerLockControls failed."); return; } try { init(); animate(); } catch (error) { console.error("Init/Anim failed:", error); alert(`Error: ${error.message}.`); } }
+        window.onload = function() { if (typeof THREE === 'undefined') { console.error("THREE not defined."); alert("Error: Load Three.js failed."); return; } if (typeof THREE.PointerLockControls === 'undefined') { console.error("PointerLockControls not defined."); alert("Error: Load PointerLockControls failed."); return; } if (typeof Tone === 'undefined') { console.error("Tone.js not defined."); alert("Error: Load Tone.js failed."); return; } try { init(); animate(); } catch (error) { console.error("Init/Anim failed:", error); alert(`Error: ${error.message}.`); } }
 
     </script>
 </body>
