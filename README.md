@@ -4,16 +4,6 @@ A simple Minecraft-inspired block building sandbox built with Three.js.
 
 ![Minecraft Sandbox](mc.jpg)
 
-## Features
-
-*   Basic terrain generation (flat plane)
-*   Player movement (WASD) and jumping (Space)
-*   Mouse look controls (requires pointer lock)
-*   Block placement (Right Click) and removal (Left Click)
-*   Block type selection (1-5 keys)
-*   Simple physics and collision detection
-*   Basic lighting and shadows
-
 ## How to Run
 
 1.  Ensure you have a web server capable of serving static files.
