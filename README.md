@@ -1,9 +1,9 @@
 # Minecraft clone
 
-A simple Minecraft-inspired block building sandbox built with Three.js.
+Minecraft in ursina
 
-![image](https://github.com/user-attachments/assets/0ec32a3a-4d78-411f-8ee0-9531f9dc206c)
+![image](https://github.com/user-attachments/assets/ed02d2e2-7eb7-4ccd-8db6-1ecd5a5b4684)
 
 ## How to Run
 
-Open index.html
+```python minecraft.py```
