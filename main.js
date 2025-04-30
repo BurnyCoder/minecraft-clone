@@ -1,112 +1,542 @@
 import * as THREE from 'three';
-// import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // Remove OrbitControls
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'; // Add PointerLockControls
-import { createNoise2D } from 'simplex-noise'; // Import noise function
+// import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // Not needed
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { createNoise2D } from 'simplex-noise';
 
-// --- Procedural Texture Generation ---
+// --- Constants ---
+const CHUNK_SIZE = 16; // Size of a chunk (blocks wide/deep)
+const RENDER_DISTANCE = 4; // Chunks to load around the player (4 means 9x9 chunks)
+const TEXTURE_SIZE = 16; // Small texture size for pixelated look
+const BLOCK_TYPES = { AIR: 'air', DIRT: 'dirt', GRASS: 'grass', STONE: 'stone', LOG: 'log', LEAF: 'leaf', PLANKS: 'planks' };
+const PLAYER_HEIGHT = 1.7;
+const GRAVITY = 0.01;
+const JUMP_FORCE = 0.15;
+const MOVE_SPEED = 0.1;
+const INTERACTION_DISTANCE = 5;
+
+// --- Procedural Texture Generation (Simplified for brevity) ---
 function generateTexture(size, color, noiseAmount = 0.1) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const context = canvas.getContext('2d');
-
-    // Base color
     context.fillStyle = color;
     context.fillRect(0, 0, size, size);
-
-    // Add noise
+    // Basic noise (same as before)
     const imageData = context.getImageData(0, 0, size, size);
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
         const noise = (Math.random() - 0.5) * 255 * noiseAmount;
-        data[i] = Math.max(0, Math.min(255, data[i] + noise));     // Red
-        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise)); // Green
-        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise)); // Blue
-        // Alpha remains 255
+        data[i] = Math.max(0, Math.min(255, data[i] + noise));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
     }
     context.putImageData(imageData, 0, 0);
-
     const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true; // Ensure texture updates
-    // Make textures pixelated like Minecraft
+    texture.needsUpdate = true;
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
     return texture;
 }
 
-const textureSize = 16; // Small texture size for pixelated look
-
-const dirtTexture = generateTexture(textureSize, '#8B4513'); // Saddle Brown
-const grassTopTexture = generateTexture(textureSize, '#228B22', 0.05); // Forest Green (less noise)
-const grassSideTexture = generateTexture(textureSize, '#A0522D'); // Sienna (side dirt look)
-const stoneTexture = generateTexture(textureSize, '#808080', 0.15); // Gray (more noise)
-const logTexture = generateTexture(textureSize, '#654321', 0.08); // Dark Brown (wood log)
-const leafTexture = generateTexture(textureSize, '#006400', 0.2);  // Dark Green (leaves)
-const plankTexture = generateTexture(textureSize, '#DEB887', 0.03); // BurlyWood (plank color)
-
+const dirtTexture = generateTexture(TEXTURE_SIZE, '#8B4513');
+const grassTopTexture = generateTexture(TEXTURE_SIZE, '#228B22', 0.05);
+const grassSideTexture = generateTexture(TEXTURE_SIZE, '#A0522D');
+const stoneTexture = generateTexture(TEXTURE_SIZE, '#808080', 0.15);
+const logTexture = generateTexture(TEXTURE_SIZE, '#654321', 0.08);
+const leafTexture = generateTexture(TEXTURE_SIZE, '#006400', 0.2);
+const plankTexture = generateTexture(TEXTURE_SIZE, '#DEB887', 0.03);
 // --- Add simple lines for plank texture ---
-const plankCanvas = plankTexture.image; // Get the canvas from the texture
+const plankCanvas = plankTexture.image;
 const plankCtx = plankCanvas.getContext('2d');
-plankCtx.strokeStyle = 'rgba(0, 0, 0, 0.2)'; // Darker lines
-plankCtx.lineWidth = Math.max(1, Math.floor(textureSize / 8)); // Adjust line width based on size
-for(let i = 0; i <= textureSize; i += Math.floor(textureSize / 4)) {
+plankCtx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+plankCtx.lineWidth = Math.max(1, Math.floor(TEXTURE_SIZE / 8));
+for (let i = 0; i <= TEXTURE_SIZE; i += Math.floor(TEXTURE_SIZE / 4)) {
     plankCtx.beginPath();
     plankCtx.moveTo(i, 0);
-    plankCtx.lineTo(i, textureSize);
+    plankCtx.lineTo(i, TEXTURE_SIZE);
     plankCtx.stroke();
 }
-plankTexture.needsUpdate = true; // Make sure texture updates after drawing
+plankTexture.needsUpdate = true;
 
 // --- Materials ---
-const dirtMaterial = new THREE.MeshStandardMaterial({ map: dirtTexture });
-const stoneMaterial = new THREE.MeshStandardMaterial({ map: stoneTexture });
-const logMaterial = new THREE.MeshStandardMaterial({ map: logTexture });
-const leafMaterial = new THREE.MeshStandardMaterial({ map: leafTexture, transparent: true, opacity: 0.9 }); // Make leaves slightly transparent
-const plankMaterial = new THREE.MeshStandardMaterial({ map: plankTexture });
-
-// Grass needs different materials for top, bottom (dirt), and sides
-const grassMaterials = [
-    new THREE.MeshStandardMaterial({ map: grassSideTexture }), // right face (+x)
-    new THREE.MeshStandardMaterial({ map: grassSideTexture }), // left face (-x)
-    new THREE.MeshStandardMaterial({ map: grassTopTexture }),  // top face (+y)
-    new THREE.MeshStandardMaterial({ map: dirtTexture }),     // bottom face (-y)
-    new THREE.MeshStandardMaterial({ map: grassSideTexture }), // front face (+z)
-    new THREE.MeshStandardMaterial({ map: grassSideTexture })  // back face (-z)
-];
+// Store materials by type for easy lookup
+const materials = {
+    [BLOCK_TYPES.DIRT]: new THREE.MeshStandardMaterial({ map: dirtTexture }),
+    [BLOCK_TYPES.STONE]: new THREE.MeshStandardMaterial({ map: stoneTexture }),
+    [BLOCK_TYPES.LOG]: new THREE.MeshStandardMaterial({ map: logTexture }),
+    [BLOCK_TYPES.LEAF]: new THREE.MeshStandardMaterial({ map: leafTexture, transparent: true, alphaTest: 0.1 }), // Use alphaTest for better leaf edges
+    [BLOCK_TYPES.PLANKS]: new THREE.MeshStandardMaterial({ map: plankTexture }),
+    [BLOCK_TYPES.GRASS]: [ // Order: +x, -x, +y (top), -y (bottom), +z, -z
+        new THREE.MeshStandardMaterial({ map: grassSideTexture }),
+        new THREE.MeshStandardMaterial({ map: grassSideTexture }),
+        new THREE.MeshStandardMaterial({ map: grassTopTexture }),
+        new THREE.MeshStandardMaterial({ map: dirtTexture }),
+        new THREE.MeshStandardMaterial({ map: grassSideTexture }),
+        new THREE.MeshStandardMaterial({ map: grassSideTexture })
+    ]
+};
 
 // --- Geometry (create once and reuse) ---
 const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
 
-// Store block type info
-const blockTypes = { DIRT: 'dirt', GRASS: 'grass', STONE: 'stone', LOG: 'log', LEAF: 'leaf', PLANKS: 'planks' };
-
 // --- Noise Setup ---
-const noise2D = createNoise2D(); // Create a 2D noise function
-const noiseFrequency = 0.05; // Controls the scale of terrain features (smaller = larger features)
-const noiseAmplitude = 5; // Controls the max height variation
-const baseLevel = -5; // Lowest level for stone generation
+const noise2D = createNoise2D();
+const noiseFrequency = 0.05;
+const noiseAmplitude = 10; // Increased amplitude for more variation
+const baseLevel = -10; // Lower base level
+const stoneDepth = 5; // How deep stone goes below dirt/grass
 
-// Get the instruction element
-const instructions = document.getElementById('instructions');
-
-// 1. Scene
+// --- Scene Setup ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); // Sky blue background
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, RENDER_DISTANCE * CHUNK_SIZE * 0.5, RENDER_DISTANCE * CHUNK_SIZE); // Add fog based on render distance
 
-// 2. Camera
-const camera = new THREE.PerspectiveCamera(
-    75, // Field of view
-    window.innerWidth / window.innerHeight, // Aspect ratio
-    0.1, // Near clipping plane
-    50 // Far clipping plane - Reduced significantly from 1000
-);
-camera.position.set(0, 10, 5); // Start higher up
-// camera.lookAt(0, 0, 0); // PointerLockControls handles looking
+// --- Camera ---
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, RENDER_DISTANCE * CHUNK_SIZE * 1.2); // Adjust far plane based on render distance
+camera.position.set(CHUNK_SIZE / 2, baseLevel + noiseAmplitude + 10, CHUNK_SIZE / 2); // Start above potential terrain height
 
-// 3. Renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// --- Renderer ---
+const renderer = new THREE.WebGLRenderer({ antialias: true }); // Antialias can be false for more pixelated look
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
+// --- Controls ---
+const controls = new PointerLockControls(camera, document.body);
+const instructions = document.getElementById('instructions'); // Make sure you have this element in HTML
+document.body.addEventListener('click', () => { controls.lock(); });
+controls.addEventListener('lock', () => { if(instructions) instructions.style.display = 'none'; });
+controls.addEventListener('unlock', () => { if(instructions) instructions.style.display = 'block'; });
+scene.add(controls.object); // Add camera controller to scene
+
+// --- Lighting ---
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+directionalLight.position.set(CHUNK_SIZE * 0.5, 50, CHUNK_SIZE * 0.5); // Position light relative to chunk size
+directionalLight.castShadow = false; // Disable shadows for now for performance
+scene.add(directionalLight);
+
+// --- Chunk Management ---
+const chunks = new Map(); // Map<string, { group: THREE.Group, instancedMeshes: Map<string, THREE.InstancedMesh> }>
+let currentChunkX = Infinity;
+let currentChunkZ = Infinity;
+
+function getChunkKey(cx, cz) {
+    return `${cx},${cz}`;
+}
+
+// --- Player State & Input ---
+const keys = { w: false, a: false, s: false, d: false, space: false };
+let playerVelocityY = 0;
+let onGround = false;
+let selectedBlockType = BLOCK_TYPES.PLANKS; // Start with planks
+
+document.addEventListener('keydown', (event) => {
+    if (!controls.isLocked) return;
+    switch (event.code) {
+        case 'KeyW': keys.w = true; break;
+        case 'KeyA': keys.a = true; break;
+        case 'KeyS': keys.s = true; break;
+        case 'KeyD': keys.d = true; break;
+        case 'Space': if (onGround) { playerVelocityY = JUMP_FORCE; onGround = false; } break; // Jump only if on ground
+        case 'Digit1': selectedBlockType = BLOCK_TYPES.STONE; updateSelectedBlockUI(); break;
+        case 'Digit2': selectedBlockType = BLOCK_TYPES.DIRT; updateSelectedBlockUI(); break;
+        case 'Digit3': selectedBlockType = BLOCK_TYPES.GRASS; updateSelectedBlockUI(); break;
+        case 'Digit4': selectedBlockType = BLOCK_TYPES.LOG; updateSelectedBlockUI(); break;
+        case 'Digit5': selectedBlockType = BLOCK_TYPES.LEAF; updateSelectedBlockUI(); break;
+        case 'Digit6': selectedBlockType = BLOCK_TYPES.PLANKS; updateSelectedBlockUI(); break;
+    }
+});
+document.addEventListener('keyup', (event) => {
+    switch (event.code) {
+        case 'KeyW': keys.w = false; break;
+        case 'KeyA': keys.a = false; break;
+        case 'KeyS': keys.s = false; break;
+        case 'KeyD': keys.d = false; break;
+        case 'Space': keys.space = false; break;
+    }
+});
+
+function updateSelectedBlockUI() {
+    const selectedBlockElement = document.getElementById('selected-block-ui'); // Needs corresponding HTML element
+    if (selectedBlockElement) {
+        selectedBlockElement.textContent = `Selected: ${selectedBlockType.charAt(0).toUpperCase() + selectedBlockType.slice(1)}`;
+    }
+    console.log("Selected:", selectedBlockType);
+}
+
+// --- Raycasting Setup ---
+const interactionRaycaster = new THREE.Raycaster();
+const groundCheckRaycaster = new THREE.Raycaster();
+const downVector = new THREE.Vector3(0, -1, 0);
+interactionRaycaster.far = INTERACTION_DISTANCE; // Set max distance for interaction raycaster
+groundCheckRaycaster.far = PLAYER_HEIGHT + 0.2; // Max distance slightly more than player height for ground check
+
+// --- Helper for Block Placement ---
+const worldObjects = []; // Includes chunk groups and manually placed blocks
+
+// --- World Generation Functions ---
+
+// Calculates block data for a chunk without creating meshes
+function generateChunkData(chunkX, chunkZ) {
+    const blocks = new Map(); // Map<string, BLOCK_TYPES> key: "x,y,z"
+    const startWorldX = chunkX * CHUNK_SIZE;
+    const startWorldZ = chunkZ * CHUNK_SIZE;
+
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+        for (let z = 0; z < CHUNK_SIZE; z++) {
+            const worldX = startWorldX + x;
+            const worldZ = startWorldZ + z;
+
+            const noiseVal = noise2D(worldX * noiseFrequency, worldZ * noiseFrequency);
+            const heightVariation = (noiseVal + 1) / 2 * noiseAmplitude;
+            const topY = Math.floor(baseLevel + heightVariation);
+
+            for (let y = baseLevel - stoneDepth * 2; y <= topY; y++) { // Generate deeper to ensure no gaps
+                 const blockPosKey = `${x},${y},${z}`;
+                 if (y < baseLevel - stoneDepth) continue; // Skip very deep areas initially if needed
+
+                 let blockType = BLOCK_TYPES.STONE;
+                 if (y === topY) {
+                     blockType = BLOCK_TYPES.GRASS;
+                 } else if (y >= topY - 2) {
+                     blockType = BLOCK_TYPES.DIRT;
+                 }
+                 blocks.set(blockPosKey, blockType);
+
+                 // Basic Tree Generation (only on the top grass block)
+                 if (blockType === BLOCK_TYPES.GRASS && y === topY && Math.random() < 0.008) { // Lower tree chance
+                     const trunkHeight = Math.floor(Math.random() * 3) + 4;
+                     // Trunk
+                     for (let ty = 1; ty <= trunkHeight; ty++) {
+                         blocks.set(`${x},${y + ty},${z}`, BLOCK_TYPES.LOG);
+                     }
+                     // Leaves (Simplified cube)
+                     const leafStartY = y + trunkHeight - 1;
+                     const leafSize = 2;
+                     for (let lx = -leafSize; lx <= leafSize; lx++) {
+                         for (let ly = 0; ly <= leafSize; ly++) {
+                             for (let lz = -leafSize; lz <= leafSize; lz++) {
+                                 if (lx === 0 && lz === 0 && ly < leafSize) continue; // Space for trunk
+                                 const leafX = x + lx;
+                                 const leafZ = z + lz;
+                                 // Ensure leaves are within the chunk boundary for simplicity,
+                                 // or handle cross-chunk trees if needed (more complex)
+                                 if (leafX >= 0 && leafX < CHUNK_SIZE && leafZ >= 0 && leafZ < CHUNK_SIZE) {
+                                      // Only place if the spot is currently empty (or replace air)
+                                      if (!blocks.has(`${leafX},${leafStartY + ly},${leafZ}`)) {
+                                          blocks.set(`${leafX},${leafStartY + ly},${leafZ}`, BLOCK_TYPES.LEAF);
+                                      }
+                                 }
+                             }
+                         }
+                     }
+                 }
+            }
+        }
+    }
+    return blocks;
+}
+
+// Creates the InstancedMeshes for a chunk based on generated data
+function createChunkMesh(chunkX, chunkZ, chunkData) {
+    const chunkGroup = new THREE.Group();
+    chunkGroup.position.set(chunkX * CHUNK_SIZE, 0, chunkZ * CHUNK_SIZE); // Position the group
+    scene.add(chunkGroup);
+    worldObjects.push(chunkGroup); // Add chunk group to raycast targets
+
+    const instances = {}; // { [blockType]: { material: Material, positions: Vector3[] } }
+
+    // Group positions by block type
+    for (const [posKey, blockType] of chunkData.entries()) {
+        if (blockType === BLOCK_TYPES.AIR) continue; // Skip air
+
+        const [x, y, z] = posKey.split(',').map(Number);
+        const position = new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5); // Center the block visually
+
+        if (!instances[blockType]) {
+            instances[blockType] = {
+                material: materials[blockType],
+                positions: [],
+            };
+        }
+        instances[blockType].positions.push(position);
+    }
+
+    const instancedMeshes = new Map(); // Map<string, THREE.InstancedMesh>
+
+    // Create InstancedMesh for each block type
+    const dummy = new THREE.Object3D(); // Used for setting matrix
+    for (const blockType in instances) {
+        const data = instances[blockType];
+        if (!data.material || data.positions.length === 0) continue;
+
+        const instancedMesh = new THREE.InstancedMesh(blockGeometry, data.material, data.positions.length);
+        instancedMesh.userData.blockType = blockType; // Store type for potential use
+        instancedMesh.userData.isChunkMesh = true; // Flag for interaction logic
+        instancedMesh.userData.chunkKey = getChunkKey(chunkX, chunkZ); // Store chunk key
+
+        let instanceIndex = 0;
+        for (const pos of data.positions) {
+            dummy.position.copy(pos);
+            dummy.updateMatrix();
+            instancedMesh.setMatrixAt(instanceIndex++, dummy.matrix);
+        }
+        instancedMesh.instanceMatrix.needsUpdate = true;
+        chunkGroup.add(instancedMesh);
+        instancedMeshes.set(blockType, instancedMesh); // Store mesh by type
+    }
+
+    return { group: chunkGroup, instancedMeshes: instancedMeshes };
+}
+
+// --- Chunk Loading/Unloading Logic ---
+function updateChunks() {
+    const playerPos = controls.getObject().position;
+    const playerChunkX = Math.floor(playerPos.x / CHUNK_SIZE);
+    const playerChunkZ = Math.floor(playerPos.z / CHUNK_SIZE);
+
+    // Only update if player changed chunks
+    if (playerChunkX === currentChunkX && playerChunkZ === currentChunkZ) {
+        return;
+    }
+
+    const previousChunkX = currentChunkX;
+    const previousChunkZ = currentChunkZ;
+    currentChunkX = playerChunkX;
+    currentChunkZ = playerChunkZ;
+
+    const chunksToRemove = new Set();
+    chunks.forEach((_, key) => chunksToRemove.add(key)); // Mark all for potential removal
+
+    // Load/Keep chunks around player
+    for (let cx = currentChunkX - RENDER_DISTANCE; cx <= currentChunkX + RENDER_DISTANCE; cx++) {
+        for (let cz = currentChunkZ - RENDER_DISTANCE; cz <= currentChunkZ + RENDER_DISTANCE; cz++) {
+            const key = getChunkKey(cx, cz);
+            chunksToRemove.delete(key); // This chunk should stay/be loaded
+
+            if (!chunks.has(key)) {
+                // Generate data and create mesh for new chunk
+                console.log(`Loading chunk: ${key}`);
+                const chunkData = generateChunkData(cx, cz);
+                const chunkMeshInfo = createChunkMesh(cx, cz, chunkData);
+                chunks.set(key, chunkMeshInfo);
+            }
+        }
+    }
+
+    // Unload chunks that are too far
+    chunksToRemove.forEach(key => {
+        console.log(`Unloading chunk: ${key}`);
+        const chunkInfo = chunks.get(key);
+        if (chunkInfo) {
+            // Remove from scene
+            scene.remove(chunkInfo.group);
+
+            // Remove from raycast targets
+            const index = worldObjects.indexOf(chunkInfo.group);
+            if (index > -1) {
+                worldObjects.splice(index, 1);
+            }
+
+            // Dispose geometry and materials OF INSTANCED MESHES
+            chunkInfo.instancedMeshes.forEach(mesh => {
+                // Geometry is shared (blockGeometry), DO NOT dispose here
+                // Materials are potentially shared, be careful. If unique per chunk, dispose.
+                // For this setup, materials are shared, so DO NOT dispose materials here.
+                mesh.dispose(); // Dispose the InstancedMesh itself
+            });
+            chunkInfo.group.clear(); // Remove children references
+        }
+        chunks.delete(key);
+    });
+
+     // Update fog distance maybe? (Optional)
+     // scene.fog.near = RENDER_DISTANCE * CHUNK_SIZE * 0.2;
+     // scene.fog.far = RENDER_DISTANCE * CHUNK_SIZE;
+     // camera.far = RENDER_DISTANCE * CHUNK_SIZE * 1.2;
+     // camera.updateProjectionMatrix();
+
+    console.log("Loaded chunks:", chunks.size);
+}
+
+// --- Block Interaction ---
+window.addEventListener('mousedown', (event) => {
+    if (!controls.isLocked) return;
+
+    // Use camera direction for raycasting in pointer lock
+    interactionRaycaster.setFromCamera({ x: 0, y: 0 }, camera); // Center of screen
+    const intersects = interactionRaycaster.intersectObjects(worldObjects, true); // Check children (InstancedMesh within Groups)
+
+    if (intersects.length > 0) {
+        const intersection = intersects[0];
+        const obj = intersection.object;
+
+        // --- Breaking Blocks ---
+        if (event.button === 0) { // Left click
+            if (obj.userData.isChunkMesh && intersection.instanceId !== undefined) {
+                // Hide the instance by scaling its matrix to zero
+                const mesh = obj; // The InstancedMesh
+                const instanceId = intersection.instanceId;
+                const matrix = new THREE.Matrix4();
+                mesh.getMatrixAt(instanceId, matrix); // Get current matrix
+                matrix.scale(new THREE.Vector3(0, 0, 0)); // Scale to zero
+                mesh.setMatrixAt(instanceId, matrix); // Set updated matrix
+                mesh.instanceMatrix.needsUpdate = true; // IMPORTANT: Tell Three.js to update
+                console.log(`Hid instance ${instanceId} in chunk ${mesh.userData.chunkKey}`);
+
+                // TODO: Update underlying chunk data structure if needed for saving/persistence
+            }
+            else if (!obj.userData.isChunkMesh && obj.userData.isPlacedBlock) {
+                 // It's a manually placed block (individual Mesh)
+                 scene.remove(obj);
+                 const index = worldObjects.indexOf(obj);
+                 if(index > -1) worldObjects.splice(index, 1);
+                 // Optional: Dispose geometry/material if not shared
+                 // obj.geometry.dispose();
+                 // obj.material.dispose();
+                 console.log("Removed placed block");
+            }
+        }
+        // --- Placing Blocks ---
+        else if (event.button === 2) { // Right click
+            if (!intersection.face) return; // Need face info
+
+            const faceNormal = intersection.face.normal;
+            let placePosition = new THREE.Vector3();
+
+            if (obj.userData.isChunkMesh && intersection.instanceId !== undefined) {
+                // Get position of the hit instance
+                const hitMatrix = new THREE.Matrix4();
+                obj.getMatrixAt(intersection.instanceId, hitMatrix);
+                const hitPosition = new THREE.Vector3().setFromMatrixPosition(hitMatrix);
+                // Calculate position relative to the chunk group's origin
+                const chunkGroup = obj.parent;
+                hitPosition.add(chunkGroup.position); // Add chunk offset to get world position
+
+                placePosition.copy(hitPosition).add(faceNormal);
+
+            } else if (obj.position) { // It's likely an individual mesh (like a previously placed block)
+                placePosition.copy(obj.position).add(faceNormal);
+            } else {
+                return; // Cannot determine placement position
+            }
+
+            // Round to nearest block center
+            placePosition.floor().addScalar(0.5);
+
+            // --- Collision Check: Prevent placing block inside player ---
+            const playerPos = controls.getObject().position;
+            const playerFeetVoxelCenter = playerPos.clone().floor().addScalar(0.5);
+            const playerHeadVoxelCenter = playerPos.clone().setY(playerPos.y + 1).floor().addScalar(0.5);
+
+            if (placePosition.distanceTo(playerFeetVoxelCenter) < 0.1 ||
+                placePosition.distanceTo(playerHeadVoxelCenter) < 0.1) {
+                console.log("Cannot place block inside player.");
+                return;
+            }
+
+            // --- Add the new block as an INDIVIDUAL MESH ---
+            // This avoids the complexity of modifying InstancedMesh for now.
+            const blockMaterial = Array.isArray(materials[selectedBlockType])
+                ? materials[selectedBlockType] // Use array for grass
+                : materials[selectedBlockType].clone(); // Clone simple materials if needed? Maybe not necessary if not modified.
+
+            const newBlock = new THREE.Mesh(blockGeometry, blockMaterial);
+            newBlock.position.copy(placePosition);
+            newBlock.userData.blockType = selectedBlockType;
+            newBlock.userData.isPlacedBlock = true; // Mark as manually placed
+            scene.add(newBlock);
+            worldObjects.push(newBlock); // Add to raycast targets
+            console.log(`Placed ${selectedBlockType} block at ${placePosition.x}, ${placePosition.y}, ${placePosition.z}`);
+        }
+    }
+});
+
+
+// --- Animation Loop ---
+const clock = new THREE.Clock();
+let fpsLastUpdateTime = 0;
+let frameCount = 0;
+const fpsDisplayElement = document.getElementById('fps-display'); // Needs HTML element
+
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+    const elapsedTime = clock.getElapsedTime();
+
+    // --- FPS Calculation ---
+    frameCount++;
+    if (elapsedTime - fpsLastUpdateTime >= 1.0) {
+        const fps = Math.round(frameCount / (elapsedTime - fpsLastUpdateTime));
+        if(fpsDisplayElement) fpsDisplayElement.textContent = `FPS: ${fps}`;
+        frameCount = 0;
+        fpsLastUpdateTime = elapsedTime;
+    }
+
+    // --- Update Chunks ---
+    updateChunks(); // Load/unload chunks based on player position
+
+    // --- Player Movement & Physics ---
+    if (controls.isLocked) {
+        const moveSpeedActual = MOVE_SPEED * delta * 60; // Frame-rate independent speed
+        const playerObject = controls.getObject();
+
+        // Horizontal movement
+        if (keys.w) playerObject.translateZ(-moveSpeedActual);
+        if (keys.s) playerObject.translateZ(moveSpeedActual);
+        if (keys.a) playerObject.translateX(-moveSpeedActual);
+        if (keys.d) playerObject.translateX(moveSpeedActual);
+
+        // Vertical movement (Gravity)
+        const playerPosition = playerObject.position;
+
+        // Apply gravity
+        playerVelocityY -= GRAVITY * delta * 60;
+
+        // Check for ground collision
+        groundCheckRaycaster.set(playerPosition, downVector);
+        const groundIntersects = groundCheckRaycaster.intersectObjects(worldObjects, true); // Check all world objects
+        const onSolidGround = groundIntersects.length > 0 && groundIntersects[0].distance <= PLAYER_HEIGHT + 0.01; // Small buffer
+
+        if (onSolidGround) {
+            // Snap to ground if falling onto it
+            if (playerVelocityY <= 0) {
+                 playerVelocityY = 0;
+                 // Adjust position precisely to avoid sinking/floating slightly
+                 playerPosition.y = groundIntersects[0].point.y + PLAYER_HEIGHT;
+                 onGround = true;
+            }
+        } else {
+             onGround = false; // Not on ground if raycast doesn't hit or hit is too far
+        }
+
+        // Apply vertical velocity
+        playerPosition.y += playerVelocityY * delta * 60;
+
+        // Prevent falling through world (safety net)
+        if (playerPosition.y < baseLevel - stoneDepth * 3) {
+            playerPosition.set(currentChunkX * CHUNK_SIZE + CHUNK_SIZE/2, baseLevel + noiseAmplitude + 5, currentChunkZ * CHUNK_SIZE + CHUNK_SIZE/2);
+            playerVelocityY = 0;
+        }
+    }
+
+    // --- Render ---
+    renderer.render(scene, camera);
+}
+
+// --- Initial Setup ---
+updateSelectedBlockUI();
+// Initial chunk load around starting position (optional, updateChunks will handle it)
+// const startChunkX = Math.floor(camera.position.x / CHUNK_SIZE);
+// const startChunkZ = Math.floor(camera.position.z / CHUNK_SIZE);
+// currentChunkX = startChunkX + 1; // Force initial load
+// currentChunkZ = startChunkZ + 1;
+updateChunks(); // Perform initial chunk load based on camera start
+
+console.log("Starting animation loop...");
+animate();
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -114,376 +544,3 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-// 4. Controls - Replace OrbitControls with PointerLockControls
-const controls = new PointerLockControls(camera, document.body);
-
-// Add event listener to lock pointer on click
-document.body.addEventListener('click', () => {
-    controls.lock();
-});
-
-controls.addEventListener('lock', () => {
-    instructions.style.display = 'none';
-});
-
-controls.addEventListener('unlock', () => {
-    instructions.style.display = 'block';
-});
-
-// Add controls object to the scene so it can be updated
-scene.add(controls.object);
-
-// Keyboard state
-const keys = {
-    w: false,
-    a: false,
-    s: false,
-    d: false,
-    space: false // Add spacebar state
-};
-
-// --- Player Physics Variables ---
-const playerHeight = 1.7; // Approximate player height
-const gravity = 0.01;
-const jumpForce = 0.15; 
-let playerVelocityY = 0;
-let onGround = false;
-
-// --- Block Selection State ---
-let selectedBlockType = blockTypes.STONE; // Start with stone selected
-
-// --- Raycasting Setup ---
-const raycaster = new THREE.Raycaster();
-const interactionDistance = 5; // Max distance to interact with blocks
-
-document.addEventListener('keydown', (event) => {
-    switch (event.code) {
-        case 'KeyW': keys.w = true; break;
-        case 'KeyA': keys.a = true; break;
-        case 'KeyS': keys.s = true; break;
-        case 'KeyD': keys.d = true; break;
-        case 'Space': keys.space = true; break;
-        // Block selection keys
-        case 'Digit1': 
-            selectedBlockType = blockTypes.STONE;
-            console.log("Selected: Stone"); // Feedback
-            updateSelectedBlockUI(); // Update UI (will add function later)
-            break;
-        case 'Digit2': 
-            selectedBlockType = blockTypes.DIRT;
-            console.log("Selected: Dirt"); // Feedback
-            updateSelectedBlockUI();
-            break;
-        case 'Digit3': 
-            selectedBlockType = blockTypes.GRASS;
-            console.log("Selected: Grass"); // Feedback
-            updateSelectedBlockUI();
-            break;
-        case 'Digit4': 
-            selectedBlockType = blockTypes.LOG;
-            console.log("Selected: Log"); // Feedback
-            updateSelectedBlockUI();
-            break;
-        case 'Digit5': 
-            selectedBlockType = blockTypes.LEAF;
-            console.log("Selected: Leaf"); // Feedback
-            updateSelectedBlockUI();
-            break;
-        case 'Digit6': 
-            selectedBlockType = blockTypes.PLANKS;
-            console.log("Selected: Planks"); // Feedback
-            updateSelectedBlockUI();
-            break;
-    }
-});
-
-// Add the keyup listener back
-document.addEventListener('keyup', (event) => {
-    switch (event.code) {
-        case 'KeyW': keys.w = false; break;
-        case 'KeyA': keys.a = false; break;
-        case 'KeyS': keys.s = false; break;
-        case 'KeyD': keys.d = false; break;
-        case 'Space': keys.space = false; break; // Handle spacebar up
-    }
-});
-
-// Need to add the updateSelectedBlockUI function later
-function updateSelectedBlockUI() {
-    const selectedBlockElement = document.getElementById('selected-block-ui');
-    if (selectedBlockElement) {
-        selectedBlockElement.textContent = `Selected: ${selectedBlockType.charAt(0).toUpperCase() + selectedBlockType.slice(1)}`;
-    }
-}
-
-// 5. Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft white light
-scene.add(ambientLight);
-
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(5, 10, 7.5);
-scene.add(directionalLight);
-
-// --- Block Management ---
-const blocks = []; // Array to hold all interactive blocks
-
-// Function to add a block at a specific position with a specific type
-function addBlock(x, y, z, blockType = blockTypes.STONE) { // Default to placing stone
-    let material;
-    switch(blockType) {
-        case blockTypes.GRASS:
-            material = grassMaterials; // Use the array of materials for grass
-            break;
-        case blockTypes.DIRT:
-            material = dirtMaterial;
-            break;
-        case blockTypes.LOG:
-            material = logMaterial;
-            break;
-        case blockTypes.LEAF:
-            material = leafMaterial;
-            break;
-        case blockTypes.PLANKS:
-            material = plankMaterial;
-            break;
-        case blockTypes.STONE:
-        default:
-            material = stoneMaterial;
-            break;
-    }
-
-    // Use the pre-defined geometry and the selected material(s)
-    const block = new THREE.Mesh(blockGeometry, material);
-    // Store type for potential future logic (e.g., different breaking sounds/times)
-    block.userData.blockType = blockType; 
-    
-    // Blocks are centered at (x, y, z)
-    block.position.set(x, y, z);
-    scene.add(block);
-    blocks.push(block); // Add to our list
-}
-
-// --- Generate Ground Blocks (Procedural Terrain) ---
-const worldSize = 32; // Increase world size slightly? (e.g., 32x32)
-for (let x = -worldSize / 2; x < worldSize / 2; x++) {
-    for (let z = -worldSize / 2; z < worldSize / 2; z++) {
-        // Calculate noise value for this x, z coordinate
-        const noiseVal = noise2D(x * noiseFrequency, z * noiseFrequency);
-
-        // Map noise value (-1 to 1) to height variation around baseLevel
-        // Add 1 to noiseVal to make it 0-2 range, then multiply by amplitude
-        const heightVariation = (noiseVal + 1) / 2 * noiseAmplitude;
-        const topY = Math.floor(baseLevel + heightVariation);
-
-        // Generate column from baseLevel up to topY
-        for (let y = baseLevel; y <= topY; y++) {
-            let blockType;
-            if (y === topY) {
-                blockType = blockTypes.GRASS; // Top layer is grass
-            } else if (y >= topY - 2) {
-                blockType = blockTypes.DIRT; // Layer(s) below grass is dirt
-            } else {
-                blockType = blockTypes.STONE; // Everything else below is stone
-            }
-            // Add block (adjust position by 0.5 for center)
-            const blockX = x + 0.5;
-            const blockY = y + 0.5;
-            const blockZ = z + 0.5;
-            addBlock(blockX, blockY, blockZ, blockType);
-
-            // --- Tree Generation --- 
-            // If this is the top grass block and random chance passes
-            if (blockType === blockTypes.GRASS && Math.random() < 0.01) { // 1% chance for a tree
-                const trunkHeight = Math.floor(Math.random() * 3) + 4; // 4-6 blocks high
-                // Generate Trunk
-                for (let ty = 1; ty <= trunkHeight; ty++) {
-                    addBlock(blockX, blockY + ty, blockZ, blockTypes.LOG);
-                }
-                // Generate Leaves (Simple Canopy)
-                const leafStartY = blockY + trunkHeight - 1; // Start leaves below the top log
-                const leafSize = 2; // Radius of leaves around trunk top
-                for (let lx = -leafSize; lx <= leafSize; lx++) {
-                    for (let ly = 0; ly <= leafSize; ly++) { // Height of leaves
-                        for (let lz = -leafSize; lz <= leafSize; lz++) {
-                            // Simple square/cube shape, avoiding the very center/corners sometimes
-                            if (lx === 0 && lz === 0 && ly < leafSize) continue; // Space for trunk top
-                            if (Math.abs(lx) === leafSize && Math.abs(lz) === leafSize && ly === 0) continue; // Trim corners slightly
-                             addBlock(blockX + lx, leafStartY + ly, blockZ + lz, blockTypes.LEAF);
-                        }
-                    }
-                }
-                // Add top layer of leaves
-                const topLeafY = leafStartY + leafSize + 1; // One level above current canopy top
-                for (let lx = -1; lx <= 1; lx++) {
-                    for (let lz = -1; lz <= 1; lz++) {
-                        // Skip corners for a more rounded look
-                        if (Math.abs(lx) === 1 && Math.abs(lz) === 1) continue;
-                        addBlock(blockX + lx, topLeafY, blockZ + lz, blockTypes.LEAF);
-                    }
-                }
-            }
-            // --- End Tree Generation ---
-        }
-    }
-}
-
-// 7. Initial Block(s)
-// addBlock(0 + 0.5, 0 + 0.5, 0 + 0.5, blockTypes.STONE); // Remove the initial floating block
-
-// Movement variables
-const moveSpeed = 0.1;
-
-// --- Mouse Click Listener ---
-window.addEventListener('mousedown', (event) => {
-    // Only interact if pointer is locked
-    if (!controls.isLocked) return;
-
-    // Raycast from camera center (since pointer is locked)
-    raycaster.setFromCamera({ x: 0, y: 0 }, camera); // { x: 0, y: 0 } corresponds to the center of the screen
-
-    const intersects = raycaster.intersectObjects(blocks); // Check only against blocks in our list
-
-    if (intersects.length > 0) {
-        const intersection = intersects[0];
-
-        // Check distance
-        if (intersection.distance < interactionDistance) {
-
-            if (event.button === 0) { // Left click - Break block
-                const objectToRemove = intersection.object;
-                scene.remove(objectToRemove);
-                // Remove from blocks array
-                const index = blocks.indexOf(objectToRemove);
-                if (index > -1) {
-                    blocks.splice(index, 1);
-                }
-                // Optional: Dispose geometry/material if no longer needed
-                // if (objectToRemove.geometry) objectToRemove.geometry.dispose();
-                // if (objectToRemove.material) objectToRemove.material.dispose();
-
-            } else if (event.button === 2) { // Right click - Place block (Minecraft-style)
-                // The block we hit
-                const targetBlock = intersection.object;
-                // The normal vector pointing away from the face we hit
-                const faceNormal = intersection.face.normal;
-
-                // Calculate the center position for the new block
-                // Start with the center of the block we hit...
-                const newBlockPos = new THREE.Vector3().copy(targetBlock.position);
-                // ...and add the face normal vector (moves 1 unit along the axis perpendicular to the face)
-                newBlockPos.add(faceNormal);
-
-                // --- Collision Check: Prevent placing block inside player --- 
-                const playerPos = new THREE.Vector3();
-                controls.object.getWorldPosition(playerPos);
-
-                // Calculate voxel center coords for player's feet and head 
-                // Need to floor playerPos and add 0.5 to get the center of the voxel the player is in
-                const playerFeetVoxelCenter = playerPos.clone().floor().addScalar(0.5);
-                // Approximate head voxel center (one block above feet)
-                const playerHeadVoxelCenter = playerPos.clone().setY(playerPos.y + 1).floor().addScalar(0.5); 
-
-                // Check if the new block's position is too close (essentially the same voxel) to the player's feet or head
-                const tolerance = 0.1; // Use a small tolerance for floating point comparisons
-                if (newBlockPos.distanceTo(playerFeetVoxelCenter) < tolerance || 
-                    newBlockPos.distanceTo(playerHeadVoxelCenter) < tolerance) {
-                    // console.log("Cannot place block inside player.");
-                    return; // Exit without placing the block
-                }
-                // --- End Collision Check ---
-
-                // If collision check passes, add the block using the currently selected type
-                // console.log(`Placing block at: ${newBlockPos.x}, ${newBlockPos.y}, ${newBlockPos.z}`);
-                addBlock(newBlockPos.x, newBlockPos.y, newBlockPos.z, selectedBlockType);
-            }
-        }
-    }
-});
-
-// 8. Animation Loop
-const clock = new THREE.Clock(); // Need clock for delta time
-const groundCheckRaycaster = new THREE.Raycaster(); // Separate raycaster for ground check
-const downVector = new THREE.Vector3(0, -1, 0);
-
-function animate() { 
-    requestAnimationFrame(animate);
-    const delta = clock.getDelta(); // Get time difference for frame-rate independent physics/movement
-
-    // --- Horizontal Movement (WASD) --- 
-    if (controls.isLocked === true) {
-        const moveDirection = new THREE.Vector3(); // Temp vector for movement direction
-        moveDirection.z = Number(keys.w) - Number(keys.s);
-        moveDirection.x = Number(keys.d) - Number(keys.a);
-        moveDirection.normalize(); // Ensure consistent speed regardless of direction
-
-        // Adjust speed based on delta time
-        const actualMoveSpeed = moveSpeed * delta * 60; // Multiply by 60 for baseline speed
-
-        if (keys.w || keys.s) {
-            controls.moveForward(moveDirection.z * actualMoveSpeed);
-        }
-        if (keys.a || keys.d) {
-            controls.moveRight(moveDirection.x * actualMoveSpeed);
-        }
-
-        // --- Vertical Movement (Gravity and Jumping) --- 
-        const playerPosition = controls.object.position;
-        let snappedToGround = false; // Flag to track if we snapped this frame
-
-        // 1. Apply gravity to velocity *first*
-        playerVelocityY -= gravity * delta * 60; 
-
-        // 2. Raycast down from player center to check for ground
-        groundCheckRaycaster.set(playerPosition, downVector);
-        const groundIntersects = groundCheckRaycaster.intersectObjects(blocks);
-        // Reduced buffer slightly
-        const onSolidGround = groundIntersects.length > 0 && groundIntersects[0].distance < playerHeight + 0.05; 
-
-        // 3. Handle ground state and jumping
-        if (onSolidGround) {
-            // Handle Jump FIRST
-            if (keys.space) {
-                 // Apply jump force and leave ground state
-                playerVelocityY = jumpForce;
-                onGround = false;
-                snappedToGround = false; // We are jumping, not snapping
-            } else {
-                 // Not jumping, so truly on ground
-                 const groundY = groundIntersects[0].point.y;
-                 const targetY = groundY + playerHeight;
-                 // Reset velocity and snap position
-                 playerVelocityY = 0;
-                 onGround = true;
-                 playerPosition.y = targetY; // Snap to ground ONLY if not jumping
-                 snappedToGround = true; // We snapped this frame
-            }
-
-        } else {
-            // 4. Player is in the air
-            onGround = false;
-            snappedToGround = false;
-        }
-
-        // 5. Apply vertical velocity *unless* we snapped to ground this frame
-        if (!snappedToGround) {
-            const verticalDelta = playerVelocityY * delta * 60;
-            playerPosition.y += verticalDelta;
-        }
-
-         // --- Debug Logging (Removed) --- 
-
-        // Prevent falling through the world (optional safety net)
-        if (playerPosition.y < -50) {
-            controls.object.position.set(0, 10, 5);
-            playerVelocityY = 0;
-        }
-    }
-
-    renderer.render(scene, camera);
-}
-
-animate(); 
-
-// Initialize the selected block UI on load
-updateSelectedBlockUI(); 
