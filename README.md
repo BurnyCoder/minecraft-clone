@@ -1,4 +1,4 @@
-# Minecraft-8: A Browser-Based Voxel Game
+# Minecraft Clone
 
 A lightweight Minecraft-inspired voxel game built with Three.js that runs directly in your browser.
 
