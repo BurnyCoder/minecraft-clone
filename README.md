@@ -2,6 +2,8 @@
 
 A browser-based Minecraft clone built with Three.js, featuring voxel-based terrain, block manipulation, and optimized rendering.
 
+![image](https://github.com/user-attachments/assets/66eeb6fe-a809-4a0b-aa8f-b728debac232)
+
 ## Features
 
 - **Voxel-based world**: Chunk-based terrain system with procedural generation
