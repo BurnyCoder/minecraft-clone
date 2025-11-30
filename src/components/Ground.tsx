@@ -16,7 +16,7 @@ export const Ground = () => {
     // Let's just use a color for now to get it working, then add textures.
 
     // Clone the texture so we don't affect the grass blocks
-    const groundTexture = images.grass.clone();
+    const groundTexture = images.grassTop.clone();
     groundTexture.wrapS = RepeatWrapping;
     groundTexture.wrapT = RepeatWrapping;
     groundTexture.repeat.set(100, 100);
