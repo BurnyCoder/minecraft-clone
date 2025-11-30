@@ -1,4 +1,8 @@
-# React + TypeScript + Vite
+# Minecraft Clone
+
+<img width="2552" height="1175" alt="image" src="https://github.com/user-attachments/assets/85639364-17e2-4e49-86ed-1ed36c473818" />
+
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
