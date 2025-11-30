@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import { useKeyboard } from '../hooks/useKeyboard';
+import { images } from '../images/textures';
 
 export const TextureSelector = () => {
     const [visible, setVisible] = useState(false);
@@ -28,11 +29,10 @@ export const TextureSelector = () => {
 
     return visible ? (
         <div className='absolute centered texture-selector'>
-            {Object.entries({ dirt, grass, glass, wood, log }).map(([k]) => {
+            {Object.entries(images).map(([k, src]) => {
                 return (
                     <div key={k} className={`${k === activeTexture ? 'active' : ''} texture-img`}>
-                        {/* Placeholder for image */}
-                        {k}
+                        <img src={src.image.src} alt={k} className="texture-icon" />
                     </div>
                 );
             })}

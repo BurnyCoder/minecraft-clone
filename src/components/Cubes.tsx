@@ -1,6 +1,7 @@
 import { useStore } from '../hooks/useStore';
 import { useBox } from '@react-three/cannon';
 import { useState } from 'react';
+import { images } from '../images/textures';
 
 const Cube = ({ position, texture, addCube, removeCube }: {
     position: [number, number, number],
@@ -13,16 +14,8 @@ const Cube = ({ position, texture, addCube, removeCube }: {
         position,
     }));
 
-    // Simple color mapping for now
-    const colorMap: { [key: string]: string } = {
-        dirt: '#b87d4b',
-        grass: '#567d46',
-        glass: '#a8d5e5',
-        wood: '#6b4c35',
-        log: '#4a3728',
-    };
-
     const [isHovered, setIsHovered] = useState(false);
+    const activeTexture = images[texture as keyof typeof images];
 
     return (
         <mesh
@@ -73,7 +66,8 @@ const Cube = ({ position, texture, addCube, removeCube }: {
         >
             <boxGeometry />
             <meshStandardMaterial
-                color={isHovered ? 'grey' : colorMap[texture] || 'white'}
+                map={activeTexture}
+                color={isHovered ? 'grey' : 'white'}
                 transparent={texture === 'glass'}
                 opacity={texture === 'glass' ? 0.6 : 1}
             />

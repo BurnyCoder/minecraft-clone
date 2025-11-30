@@ -36,13 +36,23 @@ body,
 }
 
 .texture-img {
-  padding: 10px;
+  padding: 0;
+  width: 50px;
+  height: 50px;
   background: rgba(0, 0, 0, 0.5);
   color: white;
   border: 2px solid transparent;
   border-radius: 5px;
+  overflow: hidden;
 }
 
 .texture-img.active {
   border: 2px solid white;
+}
+
+.texture-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
 }

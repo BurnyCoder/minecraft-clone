@@ -1,5 +1,7 @@
 import { usePlane } from '@react-three/cannon';
 import { useStore } from '../hooks/useStore';
+import { images } from '../images/textures';
+import { RepeatWrapping } from 'three';
 
 export const Ground = () => {
     const [ref] = usePlane(() => ({
@@ -13,6 +15,12 @@ export const Ground = () => {
     // But to follow the plan, I should probably setup textures.
     // Let's just use a color for now to get it working, then add textures.
 
+    // Clone the texture so we don't affect the grass blocks
+    const groundTexture = images.grass.clone();
+    groundTexture.wrapS = RepeatWrapping;
+    groundTexture.wrapT = RepeatWrapping;
+    groundTexture.repeat.set(100, 100);
+
     return (
         <mesh
             ref={ref as any}
@@ -23,7 +31,7 @@ export const Ground = () => {
             }}
         >
             <planeGeometry args={[100, 100]} />
-            <meshStandardMaterial color="green" />
+            <meshStandardMaterial map={groundTexture} />
         </mesh>
     );
 };
